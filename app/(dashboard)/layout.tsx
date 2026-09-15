@@ -11,15 +11,14 @@ export default async function DashboardLayout({ children }: { children: React.Re
   return (
     <>
       <Topbar />
-      {/* Padding top hanya di desktop (topbar fixed) */}
-      <main style={{ paddingTop: 0 }} className="main-content">
+      <main className="main-layout">
         {children}
       </main>
       <BottomNav />
-
       <style>{`
+        .main-layout { padding-top: 52px; background: #ffffff; min-height: 100vh; }
         @media (min-width: 768px) {
-          .main-content { padding-top: 60px !important; }
+          .main-layout { padding-top: 56px; }
         }
       `}</style>
     </>
