@@ -18,10 +18,11 @@ const EMPTY_FORM: FormData = {
 }
 
 export default function PengaturanPage() {
-  const { products, setProducts, currentStore, theme, setTheme } = useAppStore((s) => ({
-    products: s.products, setProducts: s.setProducts,
-    currentStore: s.currentStore, theme: s.theme, setTheme: s.setTheme,
-  }))
+  const products = useAppStore((s) => s.products)
+  const setProducts = useAppStore((s) => s.setProducts)
+  const currentStore = useAppStore((s) => s.currentStore)
+  const theme = useAppStore((s) => s.theme)
+  const setTheme = useAppStore((s) => s.setTheme)
   const { toast } = useToast()
   const [showForm, setShowForm] = useState(false)
   const [editId, setEditId] = useState<string|null>(null)

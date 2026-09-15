@@ -1,7 +1,7 @@
 'use client'
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { useAppStore } from '@/lib/store/appStore'
 import { setupOnlineListener } from '@/lib/supabase/sync'
 import { ToastProvider } from '@/components/shared/Toast'
@@ -28,10 +28,6 @@ function ThemeProvider({ children }: { children: React.ReactNode }) {
 }
 
 export function Providers({ children }: { children: React.ReactNode }) {
-  const [mounted, setMounted] = useState(false)
-  useEffect(() => setMounted(true), [])
-  if (!mounted) return null
-
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
