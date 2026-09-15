@@ -9,10 +9,19 @@ export default async function DashboardLayout({ children }: { children: React.Re
   if (!user) redirect('/login')
 
   return (
-    <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column' }}>
+    <>
       <Topbar />
-      <main style={{ flex: 1 }}>{children}</main>
+      {/* Padding top hanya di desktop (topbar fixed) */}
+      <main style={{ paddingTop: 0 }} className="main-content">
+        {children}
+      </main>
       <BottomNav />
-    </div>
+
+      <style>{`
+        @media (min-width: 768px) {
+          .main-content { padding-top: 60px !important; }
+        }
+      `}</style>
+    </>
   )
 }

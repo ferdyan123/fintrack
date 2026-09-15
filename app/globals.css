@@ -83,3 +83,60 @@ body {
 .animate-fade-in   { animation: fadeIn 0.2s ease; }
 .animate-scale-in  { animation: scaleIn 0.2s ease; }
 .animate-pulse-dot { animation: pulseDot 1.5s infinite; }
+
+/* ─── RESPONSIVE LAYOUT ─────────────────────────────── */
+.page-container {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 20px 16px 100px;
+}
+
+/* Desktop: lebih lebar, padding bawah lebih kecil */
+@media (min-width: 768px) {
+  .page-container {
+    max-width: 860px;
+    padding: 32px 32px 48px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .page-container {
+    max-width: 1000px;
+    padding: 40px 48px 48px;
+  }
+}
+
+/* KPI grid: 2 col mobile, 4 col desktop */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+@media (min-width: 768px) {
+  .kpi-grid { grid-template-columns: repeat(4, 1fr); }
+}
+
+/* Chart grid: 1 col mobile, 2 col desktop */
+.chart-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+@media (min-width: 768px) {
+  .chart-grid { grid-template-columns: 1fr 1fr; }
+}
+
+/* ─── CSS VARS TAMBAHAN ─────────────────────────────── */
+:root {
+  --bg-surface: #FFFFFF;
+  --bg-elevated: #FFEAEA;
+  --accent-subtle: rgba(217, 43, 43, 0.08);
+  --border-strong: rgba(217, 43, 43, 0.30);
+}
+
+[data-theme="drako"] {
+  --bg-surface: #1A0A0A;
+  --bg-elevated: #2A1010;
+  --accent-subtle: rgba(255, 68, 68, 0.10);
+  --border-strong: rgba(255, 68, 68, 0.25);
+}

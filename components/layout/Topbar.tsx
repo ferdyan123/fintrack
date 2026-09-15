@@ -23,112 +23,57 @@ export function Topbar() {
   const currentStore = useAppStore((s) => s.currentStore)
 
   return (
-    <header className="topbar">
-      {/* Logo */}
-      <div className="topbar-logo">
-        <span className="logo-emoji">🍽️</span>
-        <span className="logo-name">{currentStore?.name ?? 'FinTrack'}</span>
+    <header style={{
+      position: 'fixed', top: 0, left: 0, right: 0, zIndex: 30,
+      height: 60, background: 'var(--bg-surface)',
+      borderBottom: '1px solid var(--border)',
+      boxShadow: '0 1px 8px rgba(217,43,43,0.06)',
+      display: 'none',
+    }} className="topbar-desktop">
+      <div style={{
+        maxWidth: 1200, margin: '0 auto', height: '100%',
+        display: 'flex', alignItems: 'center',
+        justifyContent: 'space-between', padding: '0 24px',
+      }}>
+        {/* Logo */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          <span style={{ fontSize: 22 }}>🍽️</span>
+          <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--accent)', letterSpacing: '-0.3px' }}>
+            {currentStore?.name ?? 'FinTrack'}
+          </span>
+        </div>
+
+        {/* Tabs */}
+        <nav style={{ display: 'flex', alignItems: 'center', gap: 2, overflow: 'hidden' }}>
+          {TABS.map(({ href, icon: Icon, label }) => {
+            const isActive = href === '/' ? pathname === '/' : pathname.startsWith(href)
+            return (
+              <Link key={href} href={href} style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '7px 14px', borderRadius: 10,
+                fontSize: 13, fontWeight: isActive ? 600 : 500,
+                color: isActive ? 'var(--accent)' : 'var(--text-muted)',
+                textDecoration: 'none', whiteSpace: 'nowrap',
+                background: isActive ? 'var(--accent-subtle)' : 'transparent',
+                borderBottom: isActive ? '2px solid var(--accent)' : '2px solid transparent',
+                transition: 'all 0.15s',
+              }}>
+                <Icon size={15} />
+                {label}
+              </Link>
+            )
+          })}
+        </nav>
+
+        {/* Right */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+          <SyncIndicator />
+        </div>
       </div>
 
-      {/* Tabs (desktop) */}
-      <nav className="topbar-tabs">
-        {TABS.map(({ href, icon: Icon, label }) => {
-          const isActive = href === '/' ? pathname === '/' : pathname.startsWith(href)
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={`tab${isActive ? ' active' : ''}`}
-            >
-              <Icon size={15} />
-              <span>{label}</span>
-            </Link>
-          )
-        })}
-      </nav>
-
-      {/* Right: sync */}
-      <div className="topbar-right">
-        <SyncIndicator />
-      </div>
-
-      <style jsx>{`
-        .topbar {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          height: var(--topbar-height);
-          background: var(--bg-surface);
-          border-bottom: 1px solid var(--border);
-          display: none;
-          align-items: center;
-          justify-content: space-between;
-          padding: 0 24px;
-          z-index: 30;
-          box-shadow: var(--shadow-sm);
-        }
-        @media (min-width: 768px) { .topbar { display: flex; } }
-
-        .topbar-logo {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          flex-shrink: 0;
-        }
-        .logo-emoji { font-size: 22px; }
-        .logo-name {
-          font-size: 16px;
-          font-weight: 700;
-          color: var(--accent);
-          white-space: nowrap;
-        }
-
-        .topbar-tabs {
-          display: flex;
-          align-items: center;
-          gap: 2px;
-          overflow-x: auto;
-          scrollbar-width: none;
-        }
-        .topbar-tabs::-webkit-scrollbar { display: none; }
-
-        .tab {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          padding: 7px 14px;
-          border-radius: 10px;
-          font-size: 13px;
-          font-weight: 500;
-          color: var(--text-muted);
-          text-decoration: none;
-          white-space: nowrap;
-          transition: all 0.15s;
-          position: relative;
-        }
-        .tab:hover { color: var(--accent); background: var(--accent-subtle); }
-        .tab.active {
-          color: var(--accent);
-          font-weight: 600;
-          background: var(--accent-subtle);
-        }
-        .tab.active::after {
-          content: '';
-          position: absolute;
-          bottom: -1px;
-          left: 12px;
-          right: 12px;
-          height: 2px;
-          background: var(--accent);
-          border-radius: 99px;
-        }
-
-        .topbar-right {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          flex-shrink: 0;
+      <style>{`
+        @media (min-width: 768px) {
+          .topbar-desktop { display: block !important; }
         }
       `}</style>
     </header>
