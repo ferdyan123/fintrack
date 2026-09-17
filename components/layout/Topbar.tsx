@@ -3,23 +3,44 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { SyncIndicator } from '@/components/shared/SyncIndicator'
+import { CatatActionSheet } from '@/components/shared/CatatActionSheet'
+import { ExpenseModal } from '@/components/shared/ExpenseModal'
 import { useAppStore } from '@/lib/store/appStore'
 import { useState } from 'react'
 import { MoreDrawer } from './MoreDrawer'
 
 const TABS = [
-  { href: '/',           label: 'Dashboard'  },
-  { href: '/kasir',      label: 'Kasir'      },
-  { href: '/catering',   label: 'Catering'   },
-  { href: '/analitik',   label: 'Analitik'   },
-  { href: '/riwayat',    label: 'Riwayat'    },
-  { href: '/pengaturan', label: 'Pengaturan' },
+  { href: '/',              label: 'Dashboard'   },
+  { href: '/kasir',         label: 'Kasir'       },
+  { href: '/catering',      label: 'Catering'    },
+  { href: '/pengeluaran',   label: 'Pengeluaran' },
+  { href: '/analitik',      label: 'Analitik'    },
+  { href: '/riwayat',       label: 'Riwayat'     },
+  { href: '/pengaturan',    label: 'Pengaturan'  },
 ]
 
 export function Topbar() {
-  const pathname = usePathname()
+  const pathname     = usePathname()
   const currentStore = useAppStore((s) => s.currentStore)
-  const [drawerOpen, setDrawerOpen] = useState(false)
+
+  const [drawerOpen,      setDrawerOpen]      = useState(false)
+  const [actionSheetOpen, setActionSheetOpen] = useState(false)
+  const [expenseOpen,     setExpenseOpen]     = useState(false)
+
+  const btnStyle = {
+    display: 'flex', alignItems: 'center', gap: 6,
+    background: '#D92B2B', color: 'white',
+    padding: '7px 14px', borderRadius: 8,
+    fontSize: 13, fontWeight: 600,
+    border: 'none', cursor: 'pointer', whiteSpace: 'nowrap' as const,
+  }
+
+  const btnStyleMobile = {
+    background: '#D92B2B', color: 'white',
+    padding: '6px 12px', borderRadius: 8,
+    fontSize: 12, fontWeight: 600,
+    border: 'none', cursor: 'pointer',
+  }
 
   return (
     <>
@@ -46,12 +67,12 @@ export function Topbar() {
         </div>
 
         {/* Tabs */}
-        <nav style={{ display: 'flex', alignItems: 'center', gap: 2, flex: 1 }}>
+        <nav style={{ display: 'flex', alignItems: 'center', gap: 2, flex: 1, overflowX: 'auto' }}>
           {TABS.map(({ href, label }) => {
             const isActive = href === '/' ? pathname === '/' : pathname.startsWith(href)
             return (
               <Link key={href} href={href} style={{
-                padding: '6px 14px', borderRadius: 8,
+                padding: '6px 12px', borderRadius: 8,
                 fontSize: 13, fontWeight: isActive ? 600 : 400,
                 color: isActive ? '#D92B2B' : '#6B3030',
                 textDecoration: 'none', whiteSpace: 'nowrap',
@@ -67,15 +88,9 @@ export function Topbar() {
         {/* Right */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
           <SyncIndicator />
-          <Link href="/kasir" style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            background: '#D92B2B', color: 'white',
-            padding: '7px 14px', borderRadius: 8,
-            fontSize: 13, fontWeight: 600, textDecoration: 'none',
-            whiteSpace: 'nowrap',
-          }}>
+          <button style={btnStyle} onClick={() => setActionSheetOpen(true)}>
             + Catat
-          </Link>
+          </button>
         </div>
       </header>
 
@@ -100,15 +115,24 @@ export function Topbar() {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <SyncIndicator />
-          <Link href="/kasir" style={{
-            background: '#D92B2B', color: 'white',
-            padding: '6px 12px', borderRadius: 8,
-            fontSize: 12, fontWeight: 600, textDecoration: 'none',
-          }}>+ Catat</Link>
+          <button style={btnStyleMobile} onClick={() => setActionSheetOpen(true)}>
+            + Catat
+          </button>
         </div>
       </header>
 
       <MoreDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
+
+      <CatatActionSheet
+        open={actionSheetOpen}
+        onClose={() => setActionSheetOpen(false)}
+        onOpenExpense={() => setExpenseOpen(true)}
+      />
+
+      <ExpenseModal
+        open={expenseOpen}
+        onClose={() => setExpenseOpen(false)}
+      />
 
       <style>{`
         .topbar-desktop { display: none !important; }
