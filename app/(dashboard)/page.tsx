@@ -11,7 +11,7 @@ import {
   ResponsiveContainer, PieChart, Pie, Cell,
 } from 'recharts'
 
-// ── FAKE DATA — hanya dipakai saat dummy/offline ─────────────────────────────
+// ── FAKE DATA ─────────────────────────────────────────────────────────────────
 const TODAY = toISODate()
 
 function makeTime(h: number, m: number) {
@@ -39,8 +39,8 @@ export default function DashboardPage() {
   const currentStore = useAppStore((s) => s.currentStore)
   const router       = useRouter()
 
-  const isDummy    = !currentStore || currentStore.id === 'dummy-store-001'
-  const isOffline  = typeof navigator !== 'undefined' && !navigator.onLine
+  const isDummy      = !currentStore || currentStore.id === 'dummy-store-001'
+  const isOffline    = typeof navigator !== 'undefined' && !navigator.onLine
   const skipSupabase = isDummy || isOffline
 
   const [transactions, setTransactions] = useState<Transaction[]>([])
@@ -52,7 +52,6 @@ export default function DashboardPage() {
       setLoading(false)
       return
     }
-
     const load = async () => {
       setLoading(true)
       const supabase = createClient()
@@ -74,7 +73,6 @@ export default function DashboardPage() {
   const profit  = income - expense
   const txCount = transactions.filter(t => t.type === 'income').length
 
-  // Per-jam (income only)
   const hourlyData = useMemo(() => {
     const map: Record<number,number> = {}
     transactions.filter(t => t.type === 'income').forEach(t => {
@@ -92,7 +90,6 @@ export default function DashboardPage() {
     hourlyData.reduce((a,b) => a.omzet>b.omzet ? a : b)
   ,[hourlyData])
 
-  // Per-produk
   const productData = useMemo(() => {
     const map: Record<string,number> = {}
     transactions.filter(t => t.type==='income' && t.product_name).forEach(t => {
@@ -105,6 +102,18 @@ export default function DashboardPage() {
 
   const recent = useMemo(() => [...transactions].slice(0, 5), [transactions])
 
+  const heroNarasi = useMemo(() => {
+    if (income === 0) {
+      return `Selamat datang, ${currentStore?.name ?? 'Warung Demo'}! Belum ada transaksi hari ini. Yuk mulai catat! 💪`
+    }
+    const parts: string[] = []
+    if (txCount > 0) parts.push(`Luar biasa! Sudah ${txCount} transaksi hari ini`)
+    if (income > 0)  parts.push(`dengan omzet ${formatRupiah(income, true)}`)
+    if (profit > 0)  parts.push(`dan laba bersih ${formatRupiah(profit, true)}`)
+    const suffix = productData[0] ? ` ${productData[0].name} jadi bintangnya!` : '!'
+    return parts.join(' ') + suffix
+  }, [income, txCount, profit, productData, currentStore?.name])
+
   if (loading) {
     return (
       <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'60vh', flexDirection:'column', gap:12 }}>
@@ -116,49 +125,126 @@ export default function DashboardPage() {
 
   return (
     <div style={{ background: 'var(--bg-base)', minHeight: '100vh' }}>
-    <div style={{
-      maxWidth: 1100, margin: '0 auto',
-      padding: '24px 24px 80px',
-    }} className="dash-wrap">
+    <div style={{ maxWidth:1100, margin:'0 auto', padding:'24px 24px 80px' }} className="dash-wrap">
 
-      {/* Hero */}
-      <div style={{
-        background: '#D92B2B',
-        borderRadius: 16, padding: '24px 28px',
-        color: 'white', marginBottom: 20,
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-      }}>
-        <div>
-          <div style={{ fontSize: 11, opacity: 0.75, letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: 6 }}>Omzet Hari Ini</div>
-          <div style={{ fontSize: 32, fontWeight: 700, fontFamily:'Nunito,sans-serif', letterSpacing:'-0.5px' }}>{formatRupiah(income)}</div>
-          <div style={{ fontSize: 13, opacity: 0.75, marginTop: 4 }}>
-            {txCount} transaksi · Laba {formatRupiah(profit)}
-            {isDummy && <span style={{ marginLeft: 8, background:'rgba(255,255,255,0.2)', borderRadius:6, padding:'2px 7px', fontSize:11 }}>Demo</span>}
+      {/* ══ HERO CARD ══ */}
+      <div style={{ background:'#D92B2B', borderRadius:16, color:'white', marginBottom:20, overflow:'hidden' }}>
+
+        {/* ── MOBILE (≤767px) ── */}
+        <div className="hero-mobile" style={{ padding:'20px 20px 16px' }}>
+          {/* Baris 1: Logo + Nama + Tanggal */}
+          <div style={{ display:'flex', alignItems:'flex-start', gap:10, marginBottom:12 }}>
+            <div style={{
+              width:36, height:36, borderRadius:10, flexShrink:0,
+              background:'rgba(255,255,255,0.2)',
+              display:'flex', alignItems:'center', justifyContent:'center', fontSize:18,
+              marginTop:2,
+            }}>🍽️</div>
+            <div>
+              <div style={{ fontSize:15, fontWeight:700, lineHeight:1.2 }}>
+                {currentStore?.name ?? 'Warung Demo'}
+              </div>
+              <div style={{ fontSize:11, opacity:0.75, marginTop:2 }}>
+                {formatDate(new Date(), 'long')}
+              </div>
+            </div>
+          </div>
+          {/* Baris 2: Badge Ramai kiri + Bulan kanan */}
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12, gap:8 }}>
+            {peakHour ? (
+              <div style={{
+                background:'rgba(255,255,255,0.18)', borderRadius:8,
+                padding:'5px 10px', fontSize:11, fontWeight:600,
+                display:'inline-flex', alignItems:'center', gap:4, whiteSpace:'nowrap',
+              }}>
+                ⚡ Ramai {peakHour.jam} · {formatRupiah(peakHour.omzet, true)}
+              </div>
+            ) : <div />}
+            <div style={{
+              background:'rgba(255,255,255,0.18)', borderRadius:8,
+              padding:'5px 10px', fontSize:11, fontWeight:600,
+              whiteSpace:'nowrap', flexShrink:0,
+            }}>
+              {new Date().toLocaleDateString('id-ID', { month:'long', year:'numeric' })}
+            </div>
+          </div>
+          {/* Baris 3: Narasi */}
+          <div style={{
+            background:'rgba(255,255,255,0.12)', borderRadius:10,
+            padding:'10px 14px', fontSize:12, lineHeight:1.6, opacity:0.95,
+          }}>
+            🍱 {heroNarasi}
           </div>
         </div>
-        <div style={{ textAlign:'right' }}>
-          <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 4 }}>{formatDate(new Date(),'long')}</div>
-          {peakHour && (
-            <div style={{ background:'rgba(255,255,255,0.18)', borderRadius:8, padding:'6px 12px', fontSize:12, display:'inline-flex', alignItems:'center', gap:5 }}>
-              ⚡ Ramai {peakHour.jam} · {formatRupiah(peakHour.omzet, true)}
+
+        {/* ── DESKTOP (≥768px) ── */}
+        {/* Layout: kiri = logo+nama+narasi (sejajar atas), kanan = tanggal+omzet+laba */}
+        <div className="hero-desktop" style={{ padding:'24px 28px', alignItems:'flex-start', gap:28 }}>
+
+          {/* Kolom kiri */}
+          <div style={{ flex:1, display:'flex', flexDirection:'column', gap:14 }}>
+            {/* Logo + nama toko — sejajar dengan tanggal di kanan */}
+            <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+              <div style={{
+                width:36, height:36, borderRadius:10, flexShrink:0,
+                background:'rgba(255,255,255,0.2)',
+                display:'flex', alignItems:'center', justifyContent:'center', fontSize:18,
+              }}>🍽️</div>
+              <div style={{ fontSize:17, fontWeight:700, letterSpacing:'-0.2px' }}>
+                {currentStore?.name ?? 'Warung Demo'}
+              </div>
             </div>
-          )}
+            {/* Box narasi */}
+            <div style={{
+              background:'rgba(255,255,255,0.12)', borderRadius:10,
+              padding:'12px 16px', fontSize:13, lineHeight:1.65, opacity:0.95,
+            }}>
+              🍱 {heroNarasi}
+            </div>
+          </div>
+
+          {/* Divider vertikal */}
+          <div style={{ width:1, background:'rgba(255,255,255,0.18)', alignSelf:'stretch', flexShrink:0 }} />
+
+          {/* Kolom kanan: tanggal atas, lalu omzet, lalu laba+trx */}
+          <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', justifyContent:'flex-start', gap:6, minWidth:220, flexShrink:0 }}>
+            {/* Tanggal — sejajar dengan baris logo di kiri */}
+            <div style={{ fontSize:12, opacity:0.7, marginBottom:4 }}>
+              {formatDate(new Date(), 'long')}
+            </div>
+            {/* Label omzet */}
+            <div style={{ fontSize:10, opacity:0.65, letterSpacing:'0.08em', textTransform:'uppercase' }}>
+              Omzet Hari Ini
+            </div>
+            {/* Angka omzet besar */}
+            <div style={{ fontSize:32, fontWeight:700, fontFamily:'Nunito,sans-serif', letterSpacing:'-0.5px', lineHeight:1.1 }}>
+              {formatRupiah(income)}
+            </div>
+            {/* Transaksi + laba */}
+            <div style={{ fontSize:12, opacity:0.8, marginTop:2 }}>
+              {txCount} transaksi · Laba {formatRupiah(profit)}
+              {isDummy && (
+                <span style={{ marginLeft:8, background:'rgba(255,255,255,0.2)', borderRadius:6, padding:'2px 7px', fontSize:11 }}>Demo</span>
+              )}
+            </div>
+          </div>
+
         </div>
       </div>
+      {/* ══ END HERO ══ */}
 
       {/* KPI 4 col */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:20 }} className="kpi-4col">
-        <KpiCard icon="💰" bg="#DCFCE7" label="Pemasukan"       value={formatRupiah(income,true)}  delta={`${txCount} transaksi`}             deltaColor="#16A34A" />
-        <KpiCard icon="💸" bg="#FEE2E2" label="Pengeluaran"     value={formatRupiah(expense,true)} delta={`${transactions.filter(t=>t.type==='expense').length} pos biaya`} deltaColor="#DC2626"
+        <KpiCard icon="💰" bg="#DCFCE7" label="Pemasukan"       value={formatRupiah(income,true)}   delta={`${txCount} transaksi`}             deltaColor="#16A34A" />
+        <KpiCard icon="💸" bg="#FEE2E2" label="Pengeluaran"     value={formatRupiah(expense,true)}  delta={`${transactions.filter(t=>t.type==='expense').length} pos biaya`} deltaColor="#DC2626"
           onClick={() => router.push('/pengeluaran')} />
-        <KpiCard icon="📈" bg="#DBEAFE" label="Laba Bersih"     value={formatRupiah(profit,true)}  delta={income > 0 ? `Margin ${Math.round((profit/income)*100)}%` : '—'}  deltaColor="#2563EB" />
+        <KpiCard icon="📈" bg="#DBEAFE" label="Laba Bersih"     value={formatRupiah(profit,true)}   delta={income > 0 ? `Margin ${Math.round((profit/income)*100)}%` : '—'} deltaColor="#2563EB" />
         <KpiCard icon="🛒" bg="#F3E8FF" label="Produk Terlaris" value={productData[0]?.name ?? '—'} delta={productData[0] ? formatRupiah(productData[0].total,true) : 'Belum ada'} deltaColor="#7C3AED" />
       </div>
 
       {/* Chart row */}
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:20 }} className="chart-2col">
 
-        {/* Area chart per jam */}
         <div style={{ background:'var(--bg-surface)', border:'1px solid var(--border)', borderRadius:14, padding:20 }}>
           <div style={{ fontSize:14, fontWeight:600, color:'var(--text-primary)', marginBottom:2 }}>Penjualan Per Jam</div>
           <div style={{ fontSize:12, color:'var(--text-muted)', marginBottom:14 }}>Omzet masuk tiap jam</div>
@@ -189,7 +275,6 @@ export default function DashboardPage() {
           </ResponsiveContainer>
         </div>
 
-        {/* Donut per produk */}
         <div style={{ background:'var(--bg-surface)', border:'1px solid var(--border)', borderRadius:14, padding:20 }}>
           <div style={{ fontSize:14, fontWeight:600, color:'var(--text-primary)', marginBottom:2 }}>Kontribusi Per Produk</div>
           <div style={{ fontSize:12, color:'var(--text-muted)', marginBottom:14 }}>Omzet per produk hari ini · {formatRupiah(income,true)}</div>
@@ -227,10 +312,7 @@ export default function DashboardPage() {
       <div style={{ background:'var(--bg-surface)', border:'1px solid var(--border)', borderRadius:14, overflow:'hidden' }}>
         <div style={{ padding:'16px 20px 12px', display:'flex', justifyContent:'space-between', alignItems:'center', borderBottom:'1px solid var(--border)' }}>
           <span style={{ fontSize:14, fontWeight:600, color:'var(--text-primary)' }}>Transaksi Hari Ini</span>
-          <span
-            style={{ fontSize:12, color:'var(--accent)', fontWeight:600, cursor:'pointer' }}
-            onClick={() => router.push('/riwayat')}
-          >
+          <span style={{ fontSize:12, color:'var(--accent)', fontWeight:600, cursor:'pointer' }} onClick={() => router.push('/riwayat')}>
             Lihat semua
           </span>
         </div>
@@ -270,12 +352,19 @@ export default function DashboardPage() {
 
     <style>{`
       @media (max-width: 767px) {
-        .dash-wrap { padding: 16px 16px 90px !important; }
-        .kpi-4col  { grid-template-columns: 1fr 1fr !important; }
-        .chart-2col{ grid-template-columns: 1fr !important; }
+        .dash-wrap  { padding: 16px 16px 90px !important; }
+        .kpi-4col   { grid-template-columns: 1fr 1fr !important; }
+        .chart-2col { grid-template-columns: 1fr !important; }
       }
       @media (min-width: 768px) and (max-width: 1023px) {
         .kpi-4col { grid-template-columns: repeat(2,1fr) !important; }
+      }
+
+      .hero-mobile  { display: block; }
+      .hero-desktop { display: none;  }
+      @media (min-width: 768px) {
+        .hero-mobile  { display: none; }
+        .hero-desktop { display: flex; }
       }
     `}</style>
     </div>

@@ -1,10 +1,11 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { X, Plus, Check, Loader2 } from 'lucide-react'
+import { X, ChevronDown, Settings, Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useAppStore } from '@/lib/store/appStore'
 import { toISODate } from '@/lib/utils'
+import { useRouter } from 'next/navigation'
 import type { Transaction, ExpenseCategory } from '@/types'
 
 interface ExpenseModalProps {
@@ -33,55 +34,59 @@ function parseDot(formatted: string): number {
 }
 
 export function ExpenseModal({ open, onClose, onSaved }: ExpenseModalProps) {
-  const currentStore      = useAppStore((s) => s.currentStore)
-  const expenseCategories = useAppStore((s) => s.expenseCategories)
-  const setExpenseCategories = useAppStore((s) => s.setExpenseCategories)
-  const addPendingSync    = useAppStore((s) => s.addPendingSync)
+  const router = useRouter()
+  const currentStore         = useAppStore((s) => s.currentStore)
+  const expenseCategories    = useAppStore((s) => s.expenseCategories)
+  const addPendingSync       = useAppStore((s) => s.addPendingSync)
 
-  // Form state
-  const [nominal,   setNominal]   = useState('')
-  const [catId,     setCatId]     = useState('')
-  const [date,      setDate]      = useState(toISODate())
-  const [note,      setNote]      = useState('')
-  const [saving,    setSaving]    = useState(false)
-  const [error,     setError]     = useState('')
+  // Form state — urutan: tanggal → nominal → kategori → catatan
+  const [date,    setDate]    = useState(toISODate())
+  const [nominal, setNominal] = useState('')
+  const [catId,   setCatId]   = useState('')
+  const [note,    setNote]    = useState('')
+  const [saving,  setSaving]  = useState(false)
+  const [error,   setError]   = useState('')
 
-  // Tambah kategori baru
-  const [showNewCat,    setShowNewCat]    = useState(false)
-  const [newCatName,    setNewCatName]    = useState('')
-  const [savingCat,     setSavingCat]     = useState(false)
-  const newCatRef = useRef<HTMLInputElement>(null)
+  // Dropdown kategori state
+  const [dropOpen,    setDropOpen]    = useState(false)
+  const dropRef = useRef<HTMLDivElement>(null)
 
-  const isOffline  = typeof navigator !== 'undefined' && !navigator.onLine
-  const isDummy    = currentStore?.id === 'dummy-store-001'
+  const isOffline    = typeof navigator !== 'undefined' && !navigator.onLine
+  const isDummy      = currentStore?.id === 'dummy-store-001'
   const skipSupabase = isOffline || isDummy
 
   // Pakai kategori dari store atau fallback
   const cats = expenseCategories.length > 0 ? expenseCategories : FALLBACK_CATS
+  const selectedCat = cats.find((c) => c.id === catId) ?? cats[0]
 
   // Reset form saat buka
   useEffect(() => {
     if (open) {
+      setDate(toISODate())
       setNominal('')
       setCatId(cats[0]?.id ?? '')
-      setDate(toISODate())
       setNote('')
       setError('')
-      setShowNewCat(false)
-      setNewCatName('')
+      setDropOpen(false)
     }
   }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Focus input saat modal buka
+  // Focus nominal saat modal buka
   const nominalRef = useRef<HTMLInputElement>(null)
   useEffect(() => {
     if (open) setTimeout(() => nominalRef.current?.focus(), 100)
   }, [open])
 
-  // Focus input tambah kategori
+  // Tutup dropdown kalau klik luar
   useEffect(() => {
-    if (showNewCat) setTimeout(() => newCatRef.current?.focus(), 80)
-  }, [showNewCat])
+    function handleClickOutside(e: MouseEvent) {
+      if (dropRef.current && !dropRef.current.contains(e.target as Node)) {
+        setDropOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   // Lock scroll
   useEffect(() => {
@@ -91,66 +96,36 @@ export function ExpenseModal({ open, onClose, onSaved }: ExpenseModalProps) {
 
   // ESC to close
   useEffect(() => {
-    const fn = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    const fn = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (dropOpen) { setDropOpen(false); return }
+        onClose()
+      }
+    }
     document.addEventListener('keydown', fn)
     return () => document.removeEventListener('keydown', fn)
-  }, [onClose])
-
-  async function handleSaveCategory() {
-    const name = newCatName.trim()
-    if (!name || !currentStore) return
-    setSavingCat(true)
-
-    const newCat: ExpenseCategory = {
-      id:         crypto.randomUUID(),
-      store_id:   currentStore.id,
-      name,
-      icon:       '📌',
-      color:      '#6B7280',
-      is_default: false,
-    }
-
-    if (!skipSupabase) {
-      const supabase = createClient()
-      const { data, error: e } = await supabase
-        .from('expense_categories')
-        .insert({ ...newCat })
-        .select()
-        .single()
-      if (!e && data) newCat.id = data.id
-    } else {
-      addPendingSync({ table: 'expense_categories', action: 'insert', payload: newCat })
-    }
-
-    setExpenseCategories([...expenseCategories, newCat])
-    setCatId(newCat.id)
-    setShowNewCat(false)
-    setNewCatName('')
-    setSavingCat(false)
-  }
+  }, [onClose, dropOpen])
 
   async function handleSave() {
     const amount = parseDot(nominal)
     if (!amount || amount <= 0) { setError('Nominal harus diisi'); return }
-    if (!catId)                  { setError('Pilih kategori dulu'); return }
-    if (!currentStore)           { setError('Store belum dimuat');  return }
+    if (!catId && !selectedCat) { setError('Pilih kategori dulu'); return }
+    if (!currentStore)           { setError('Store belum dimuat'); return }
 
     setSaving(true)
     setError('')
 
-    const selectedCat = cats.find((c) => c.id === catId)
-
     const tx: Transaction = {
-      id:           crypto.randomUUID(),
-      store_id:     currentStore.id,
-      type:         'expense',
-      category:     selectedCat?.name ?? 'Lain-lain',
+      id:         crypto.randomUUID(),
+      store_id:   currentStore.id,
+      type:       'expense',
+      category:   selectedCat?.name ?? 'Lain-lain',
       amount,
-      profit:       0,
-      note:         note.trim() || undefined,
+      profit:     0,
+      note:       note.trim() || undefined,
       date,
-      source:       'manual',
-      created_at:   new Date().toISOString(),
+      source:     'manual',
+      created_at: new Date().toISOString(),
     }
 
     if (!skipSupabase) {
@@ -187,230 +162,307 @@ export function ExpenseModal({ open, onClose, onSaved }: ExpenseModalProps) {
 
   if (!open) return null
 
-  const S = {
-    overlay: {
-      position: 'fixed' as const, inset: 0, zIndex: 60,
-      background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(3px)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      padding: '16px',
-      animation: 'fadeIn 0.18s ease',
-    },
-    modal: {
-      background: 'var(--bg-surface)',
-      borderRadius: 20,
-      width: '100%', maxWidth: 440,
-      boxShadow: 'var(--shadow-md)',
-      overflow: 'hidden',
-      animation: 'scaleIn 0.2s cubic-bezier(0.34,1.56,0.64,1)',
-    },
-    header: {
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      padding: '18px 20px 0',
-    },
-    body: { padding: '16px 20px 20px', display: 'flex', flexDirection: 'column' as const, gap: 14 },
-    label: { fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const, letterSpacing: '0.07em', marginBottom: 6, display: 'block' },
-    nominalWrap: {
-      display: 'flex', alignItems: 'center', gap: 8,
-      background: 'var(--bg-elevated)',
-      border: '2px solid var(--border)',
-      borderRadius: 14, padding: '0 16px', height: 56,
-    },
-    prefix: { fontSize: 18, fontWeight: 700, color: 'var(--text-muted)', flexShrink: 0 },
-    nominalInput: {
-      flex: 1, border: 'none', background: 'transparent', outline: 'none',
-      fontSize: 24, fontWeight: 800, color: 'var(--text-primary)',
-      fontFamily: 'Nunito, sans-serif', letterSpacing: '-0.5px',
-      minWidth: 0,
-    },
-    chipsWrap: { display: 'flex', flexWrap: 'wrap' as const, gap: 8 },
-    chip: (active: boolean, color?: string) => ({
-      padding: '7px 14px', borderRadius: 99, fontSize: 13, fontWeight: 600,
-      cursor: 'pointer', border: 'none', transition: 'all 0.15s',
-      background: active ? (color ?? 'var(--accent)') : 'var(--bg-elevated)',
-      color: active ? 'white' : 'var(--text-secondary)',
-      outline: active ? `2px solid ${color ?? 'var(--accent)'}` : 'none',
-      outlineOffset: 1,
-    }),
-    addCatBtn: {
-      padding: '7px 14px', borderRadius: 99, fontSize: 13, fontWeight: 600,
-      cursor: 'pointer', border: '1.5px dashed var(--border-strong)',
-      background: 'transparent', color: 'var(--text-muted)',
-      display: 'flex', alignItems: 'center', gap: 4,
-      transition: 'all 0.15s',
-    },
-    newCatRow: {
-      display: 'flex', gap: 8, alignItems: 'center',
-      marginTop: 8,
-    },
-    newCatInput: {
-      flex: 1, border: '1.5px solid var(--border)', borderRadius: 10,
-      padding: '8px 12px', fontSize: 13, background: 'var(--bg-elevated)',
-      color: 'var(--text-primary)', outline: 'none',
-    },
-    dateInput: {
-      width: '100%', border: '1.5px solid var(--border)', borderRadius: 12,
-      padding: '10px 14px', fontSize: 14, background: 'var(--bg-elevated)',
-      color: 'var(--text-primary)', outline: 'none', fontFamily: 'inherit',
-    },
-    noteInput: {
-      width: '100%', border: '1.5px solid var(--border)', borderRadius: 12,
-      padding: '10px 14px', fontSize: 14, background: 'var(--bg-elevated)',
-      color: 'var(--text-primary)', outline: 'none', fontFamily: 'inherit',
-      resize: 'none' as const, minHeight: 64,
-    },
-    errorMsg: { fontSize: 12, color: 'var(--danger)', marginTop: -6 },
-    footer: {
-      padding: '0 20px 20px', display: 'flex', gap: 10,
-    },
-    btnCancel: {
-      flex: 1, padding: '13px', borderRadius: 14, fontSize: 14, fontWeight: 600,
-      cursor: 'pointer', border: '1.5px solid var(--border)',
-      background: 'var(--bg-elevated)', color: 'var(--text-secondary)',
-    },
-    btnSave: {
-      flex: 2, padding: '13px', borderRadius: 14, fontSize: 14, fontWeight: 700,
-      cursor: saving ? 'not-allowed' : 'pointer', border: 'none',
-      background: saving ? 'var(--text-muted)' : 'var(--accent)',
-      color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-    },
-  }
-
   return (
-    <div style={S.overlay} onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
-      <div style={S.modal}>
+    <>
+      {/* Overlay */}
+      <div
+        style={{
+          position: 'fixed', inset: 0, zIndex: 60,
+          background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(3px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: '16px',
+          animation: 'fadeIn 0.18s ease',
+        }}
+        onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
+      >
+        <div style={{
+          background: 'var(--bg-surface)',
+          borderRadius: 22,
+          width: '100%', maxWidth: 420,
+          boxShadow: '0 20px 60px rgba(0,0,0,0.18)',
+          overflow: 'hidden',
+          animation: 'scaleIn 0.2s cubic-bezier(0.34,1.56,0.64,1)',
+        }}>
 
-        {/* Header */}
-        <div style={S.header}>
-          <div>
+          {/* ── Header ── */}
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '20px 20px 0',
+          }}>
             <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary)' }}>
               💸 Catat Pengeluaran
             </div>
-            {skipSupabase && (
-              <div style={{ fontSize: 11, color: 'var(--warning)', marginTop: 2 }}>
-                ⚡ Mode offline — disimpan lokal
-              </div>
-            )}
+            <button
+              onClick={onClose}
+              style={{
+                width: 32, height: 32, borderRadius: '50%', border: 'none',
+                background: 'var(--bg-elevated)', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: 'var(--text-muted)', transition: 'background 0.15s',
+              }}
+            >
+              <X size={16} />
+            </button>
           </div>
-          <button onClick={onClose} style={{
-            width: 32, height: 32, borderRadius: '50%', border: 'none',
-            background: 'var(--bg-elevated)', cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: 'var(--text-muted)',
+
+          {/* ── Body ── */}
+          <div style={{
+            padding: '20px 20px 0',
+            display: 'flex', flexDirection: 'column', gap: 18,
           }}>
-            <X size={16} />
-          </button>
-        </div>
 
-        {/* Body */}
-        <div style={S.body}>
-
-          {/* Nominal */}
-          <div>
-            <label style={S.label}>Nominal</label>
-            <div style={{
-              ...S.nominalWrap,
-              borderColor: nominal ? 'var(--accent)' : 'var(--border)',
-            }}>
-              <span style={S.prefix}>Rp</span>
+            {/* 1. TANGGAL */}
+            <div>
+              <label style={labelStyle}>Tanggal</label>
               <input
-                ref={nominalRef}
-                inputMode="numeric"
-                placeholder="0"
-                value={nominal}
-                onChange={(e) => setNominal(formatWithDot(e.target.value))}
-                style={S.nominalInput}
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                style={{
+                  width: '100%', border: '1.5px solid var(--border)', borderRadius: 12,
+                  padding: '11px 14px', fontSize: 14, background: 'var(--bg-elevated)',
+                  color: 'var(--text-primary)', outline: 'none', fontFamily: 'inherit',
+                  boxSizing: 'border-box',
+                }}
               />
             </div>
-          </div>
 
-          {/* Kategori */}
-          <div>
-            <label style={S.label}>Kategori</label>
-            <div style={S.chipsWrap}>
-              {cats.map((cat) => (
-                <button
-                  key={cat.id}
-                  onClick={() => setCatId(cat.id)}
-                  style={S.chip(catId === cat.id, cat.color)}
-                >
-                  {cat.icon} {cat.name}
-                </button>
-              ))}
-              <button
-                style={S.addCatBtn}
-                onClick={() => setShowNewCat((v) => !v)}
-              >
-                <Plus size={13} /> Baru
-              </button>
+            {/* 2. NOMINAL */}
+            <div>
+              <label style={labelStyle}>Nominal</label>
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                background: 'var(--bg-elevated)',
+                border: `2px solid ${nominal ? 'var(--accent)' : 'var(--border)'}`,
+                borderRadius: 14, padding: '0 16px', height: 54,
+                transition: 'border-color 0.15s',
+              }}>
+                <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-muted)', flexShrink: 0 }}>
+                  Rp
+                </span>
+                <input
+                  ref={nominalRef}
+                  inputMode="numeric"
+                  placeholder="0"
+                  value={nominal}
+                  onChange={(e) => setNominal(formatWithDot(e.target.value))}
+                  style={{
+                    flex: 1, border: 'none', background: 'transparent', outline: 'none',
+                    fontSize: 22, fontWeight: 800, color: 'var(--text-primary)',
+                    fontFamily: 'Nunito, sans-serif', letterSpacing: '-0.5px', minWidth: 0,
+                  }}
+                />
+              </div>
             </div>
 
-            {/* Input kategori baru */}
-            {showNewCat && (
-              <div style={S.newCatRow}>
-                <input
-                  ref={newCatRef}
-                  style={S.newCatInput}
-                  placeholder="Nama kategori baru..."
-                  value={newCatName}
-                  onChange={(e) => setNewCatName(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') handleSaveCategory() }}
-                />
+            {/* 3. KATEGORI — Dropdown */}
+            <div>
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                marginBottom: 6,
+              }}>
+                <label style={{ ...labelStyle, marginBottom: 0 }}>Kategori</label>
                 <button
-                  onClick={handleSaveCategory}
-                  disabled={savingCat || !newCatName.trim()}
+                  onClick={() => { onClose(); router.push('/pengaturan') }}
                   style={{
-                    width: 36, height: 36, borderRadius: 10, border: 'none',
-                    background: newCatName.trim() ? 'var(--accent)' : 'var(--bg-elevated)',
-                    color: newCatName.trim() ? 'white' : 'var(--text-muted)',
-                    cursor: newCatName.trim() ? 'pointer' : 'not-allowed',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                    display: 'flex', alignItems: 'center', gap: 4,
+                    fontSize: 11, fontWeight: 600, color: 'var(--accent)',
+                    background: 'transparent', border: 'none', cursor: 'pointer',
+                    padding: '2px 0',
                   }}
                 >
-                  {savingCat ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Check size={14} />}
+                  <Settings size={11} />
+                  Kelola kategori
                 </button>
               </div>
+
+              {/* Dropdown trigger */}
+              <div ref={dropRef} style={{ position: 'relative' }}>
+                <button
+                  onClick={() => setDropOpen((v) => !v)}
+                  style={{
+                    width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '11px 14px', borderRadius: 12,
+                    border: `1.5px solid ${dropOpen ? 'var(--accent)' : 'var(--border)'}`,
+                    background: 'var(--bg-elevated)', cursor: 'pointer',
+                    textAlign: 'left', transition: 'border-color 0.15s',
+                    boxSizing: 'border-box',
+                  }}
+                >
+                  {selectedCat ? (
+                    <>
+                      <div style={{
+                        width: 32, height: 32, borderRadius: 9, flexShrink: 0,
+                        background: (selectedCat.color ?? '#6B7280') + '20',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 16,
+                      }}>
+                        {selectedCat.icon}
+                      </div>
+                      <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
+                        {selectedCat.name}
+                      </span>
+                    </>
+                  ) : (
+                    <span style={{ flex: 1, fontSize: 14, color: 'var(--text-muted)' }}>
+                      Pilih kategori...
+                    </span>
+                  )}
+                  <ChevronDown
+                    size={16}
+                    color="var(--text-muted)"
+                    style={{
+                      flexShrink: 0,
+                      transform: dropOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                      transition: 'transform 0.2s',
+                    }}
+                  />
+                </button>
+
+                {/* Dropdown list */}
+                {dropOpen && (
+                  <div style={{
+                    position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0,
+                    background: 'var(--bg-surface)',
+                    border: '1.5px solid var(--border)',
+                    borderRadius: 14,
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                    zIndex: 10, overflow: 'hidden',
+                    animation: 'fadeIn 0.12s ease',
+                    maxHeight: 240, overflowY: 'auto',
+                  }}>
+                    {cats.map((cat, i) => {
+                      const isActive = catId === cat.id || (!catId && i === 0)
+                      return (
+                        <button
+                          key={cat.id}
+                          onClick={() => { setCatId(cat.id); setDropOpen(false) }}
+                          style={{
+                            width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                            padding: '11px 14px', border: 'none', cursor: 'pointer',
+                            background: isActive ? 'var(--accent-subtle)' : 'transparent',
+                            textAlign: 'left', transition: 'background 0.1s',
+                            borderBottom: i < cats.length - 1 ? '1px solid var(--border)' : 'none',
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!isActive) e.currentTarget.style.background = 'var(--bg-elevated)'
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!isActive) e.currentTarget.style.background = 'transparent'
+                          }}
+                        >
+                          <div style={{
+                            width: 30, height: 30, borderRadius: 8, flexShrink: 0,
+                            background: (cat.color ?? '#6B7280') + '18',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: 15,
+                          }}>
+                            {cat.icon}
+                          </div>
+                          <span style={{
+                            flex: 1, fontSize: 14,
+                            fontWeight: isActive ? 700 : 500,
+                            color: isActive ? 'var(--accent)' : 'var(--text-primary)',
+                          }}>
+                            {cat.name}
+                          </span>
+                          {isActive && (
+                            <div style={{
+                              width: 18, height: 18, borderRadius: '50%',
+                              background: 'var(--accent)',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              flexShrink: 0,
+                            }}>
+                              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                                <path d="M2 5l2.5 2.5L8 3" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </div>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 4. CATATAN */}
+            <div>
+              <label style={labelStyle}>
+                Catatan{' '}
+                <span style={{ opacity: 0.5, fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
+                  (opsional)
+                </span>
+              </label>
+              <textarea
+                placeholder="Contoh: Belanja sayuran dari Pasar Lama..."
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                rows={2}
+                style={{
+                  width: '100%', border: '1.5px solid var(--border)', borderRadius: 12,
+                  padding: '11px 14px', fontSize: 14, background: 'var(--bg-elevated)',
+                  color: 'var(--text-primary)', outline: 'none', fontFamily: 'inherit',
+                  resize: 'none', boxSizing: 'border-box', lineHeight: 1.5,
+                }}
+              />
+            </div>
+
+            {error && (
+              <p style={{ fontSize: 12, color: 'var(--danger)', margin: '-8px 0 0' }}>
+                ⚠️ {error}
+              </p>
             )}
           </div>
 
-          {/* Tanggal */}
-          <div>
-            <label style={S.label}>Tanggal</label>
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              style={S.dateInput}
-            />
+          {/* ── Footer — hanya tombol Simpan ── */}
+          <div style={{ padding: '18px 20px 20px' }}>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              style={{
+                width: '100%', padding: '14px',
+                borderRadius: 14, fontSize: 15, fontWeight: 700,
+                cursor: saving ? 'not-allowed' : 'pointer', border: 'none',
+                background: saving ? 'var(--text-muted)' : 'var(--accent)',
+                color: 'white',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                transition: 'opacity 0.15s, transform 0.15s',
+                boxShadow: saving ? 'none' : '0 4px 16px rgba(217,43,43,0.30)',
+              }}
+              onMouseEnter={(e) => {
+                if (!saving) e.currentTarget.style.transform = 'translateY(-1px)'
+              }}
+              onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)' }}
+            >
+              {saving ? (
+                <>
+                  <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
+                  Menyimpan...
+                </>
+              ) : (
+                '✓ Simpan Pengeluaran'
+              )}
+            </button>
           </div>
-
-          {/* Catatan */}
-          <div>
-            <label style={S.label}>Catatan <span style={{ opacity: 0.5, fontWeight: 400 }}>(opsional)</span></label>
-            <textarea
-              placeholder="Contoh: Belanja sayuran dari Pasar Lama..."
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              style={S.noteInput}
-              rows={2}
-            />
-          </div>
-
-          {error && <p style={S.errorMsg}>⚠️ {error}</p>}
         </div>
-
-        {/* Footer */}
-        <div style={S.footer}>
-          <button style={S.btnCancel} onClick={onClose}>Batal</button>
-          <button style={S.btnSave} onClick={handleSave} disabled={saving}>
-            {saving
-              ? <><Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} /> Menyimpan...</>
-              : '✓ Simpan Pengeluaran'
-            }
-          </button>
-        </div>
-
       </div>
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
-    </div>
+
+      <style>{`
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes scaleIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+      `}</style>
+    </>
   )
+}
+
+// Label style helper
+const labelStyle: React.CSSProperties = {
+  fontSize: 12, fontWeight: 700,
+  color: 'var(--text-muted)',
+  textTransform: 'uppercase',
+  letterSpacing: '0.07em',
+  marginBottom: 6,
+  display: 'block',
 }

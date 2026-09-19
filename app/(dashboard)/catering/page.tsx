@@ -71,7 +71,7 @@ const STATUS_NEXT: Partial<Record<OrderStatus, { next: OrderStatus; label: strin
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
-const fmt   = (n: number) => 'Rp ' + n.toLocaleString('id-ID')
+const fmt   = (n: number) => 'Rp\u00A0' + n.toLocaleString('id-ID')
 const today = new Date().toISOString().split('T')[0]
 
 function fmtDate(d: string) {
@@ -194,86 +194,98 @@ function EmptyState({ filter, onAdd }: { filter: FilterTab; onAdd: () => void })
 function OrderCard({ order, onClick }: { order: CateringOrder; onClick: () => void }) {
   const overdue = isOverdue(order)
   const urgent  = isUrgent(order)
+  const days    = daysUntil(order.event_date)
+  const pm      = PAYMENT_METHODS.find(p => p.key === order.payment_method)
+
+  // Format tanggal tanpa tahun: "20 Sep · 10:00"
+  const eventLabel = (() => {
+    const d = new Date(order.event_date)
+    const tgl = d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
+    return order.event_time ? `${tgl} · ${order.event_time}` : tgl
+  })()
+
+  const metaTags = [
+    `📅 ${eventLabel}`,
+    `📍 ${order.location}`,
+    ...(pm ? [`${pm.icon} ${pm.label}`] : []),
+  ]
 
   return (
     <div
       onClick={onClick}
       style={{
         background: '#fff',
-        border: `1px solid ${overdue ? '#FECACA' : urgent ? '#FDE68A' : '#E5E7EB'}`,
-        borderRadius: 12,
-        padding: '16px',
+        border: '1px solid #EFEFEF',
+        borderRadius: 14,
+        overflow: 'hidden',
         cursor: 'pointer',
-        display: 'grid',
-        gridTemplateColumns: '1fr auto',
-        gap: '2px 12px',
         transition: 'box-shadow 0.12s',
       }}
-      onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 2px 12px rgba(0,0,0,0.08)')}
+      onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.07)')}
       onMouseLeave={e => (e.currentTarget.style.boxShadow = 'none')}
     >
-      {/* Kiri */}
-      <div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-          <span style={{ fontWeight: 700, fontSize: 15, color: 'var(--text-primary)' }}>
-            {order.customer_name}
-          </span>
-          {order.customer_institution && (
-            <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 400 }}>
-              · {order.customer_institution}
-            </span>
-          )}
-        </div>
-
-        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '4px 10px', fontSize: 13, color: 'var(--text-muted)' }}>
-          <span>📅 {fmtDate(order.event_date)}{order.event_time ? ` · ${order.event_time}` : ''}</span>
-          <UrgencyChip order={order} />
-        </div>
-
-        <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 3 }}>
-          📍 {order.location}
-        </div>
-
-        {/* Finance row */}
+      {/* Urgent bar */}
+      {(urgent || overdue) && (
         <div style={{
-          display: 'flex', gap: 16, marginTop: 12,
-          paddingTop: 10, borderTop: '1px solid #F3F4F6',
+          padding: '7px 14px',
+          background: overdue ? '#FFF0F0' : '#FFFBEB',
+          borderBottom: `1px solid ${overdue ? '#FECACA' : '#FEF3C7'}`,
+          fontSize: 11, fontWeight: 700,
+          color: overdue ? '#C0392B' : '#92610A',
+          display: 'flex', alignItems: 'center', gap: 5,
         }}>
-          <div>
-            <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)' }}>Total</p>
-            <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{fmt(order.total)}</p>
-          </div>
-          <div>
-            <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)' }}>DP</p>
-            <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: '#15803D' }}>{fmt(order.dp_amount)}</p>
-          </div>
-          <div>
-            <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)' }}>Sisa</p>
-            <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: order.remaining > 0 ? '#DC2626' : '#15803D' }}>{fmt(order.remaining)}</p>
-          </div>
-          {order.payment_method && (
-            <div>
-              <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)' }}>Bayar</p>
-              <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
-                {PAYMENT_METHODS.find(p => p.key === order.payment_method)?.icon}{' '}
-                {PAYMENT_METHODS.find(p => p.key === order.payment_method)?.label}
-              </p>
-            </div>
+          {overdue
+            ? '❗ Order ini overdue — segera tindak lanjuti'
+            : `⚠️ Acara ${days === 0 ? 'hari ini' : `${days} hari lagi`} — segera persiapkan`}
+        </div>
+      )}
+
+      {/* Header: nama + status */}
+      <div style={{
+        display: 'flex', justifyContent: 'space-between',
+        alignItems: 'flex-start', padding: '13px 14px 8px',
+      }}>
+        <div>
+          <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: '#111', letterSpacing: '-0.2px' }}>
+            {order.customer_name}
+          </p>
+          {order.customer_institution && (
+            <p style={{ margin: '2px 0 0', fontSize: 11, color: '#ABABAB' }}>
+              {order.customer_institution}
+            </p>
           )}
         </div>
-
-        {order.items.length > 0 && (
-          <p style={{ margin: '8px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>
-            🍽️ {order.items.slice(0, 3).map(i => `${i.name} ×${i.qty}`).join(' · ')}
-            {order.items.length > 3 ? ` +${order.items.length - 3} lagi` : ''}
-          </p>
-        )}
+        <StatusBadge status={order.status} small />
       </div>
 
-      {/* Kanan */}
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
-        <StatusBadge status={order.status} />
-        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>›</span>
+      {/* Meta tags */}
+      <div style={{ padding: '0 14px 10px', display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+        {metaTags.map((tag, i) => (
+          <span key={i} style={{
+            fontSize: 11, color: '#888',
+            background: '#F7F7F7',
+            padding: '4px 9px', borderRadius: 6,
+            whiteSpace: 'nowrap',
+          }}>{tag}</span>
+        ))}
+      </div>
+
+      {/* Finance grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', borderTop: '1px solid #F5F5F5' }}>
+        {[
+          { label: 'Total', value: fmt(order.total),     color: '#111' },
+          { label: 'DP',    value: fmt(order.dp_amount), color: '#16A34A' },
+          { label: 'Sisa',  value: fmt(order.remaining), color: order.remaining > 0 ? '#C0392B' : '#16A34A' },
+        ].map((col, i) => (
+          <div key={i} style={{ padding: '10px 14px', borderRight: i < 2 ? '1px solid #F5F5F5' : 'none' }}>
+            <p style={{ margin: '0 0 3px', fontSize: 10, fontWeight: 700, color: '#ABABAB', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              {col.label}
+            </p>
+            <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: col.color, whiteSpace: 'nowrap' }}>
+              {col.value}
+            </p>
+          </div>
+        ))}
       </div>
     </div>
   )
@@ -1168,123 +1180,199 @@ export default function CateringPage() {
   }, [orders])
 
   // ── Stats ─────────────────────────────────────────────────────────────────────
-  const stats = useMemo(() => ({
-    totalTagihan: orders.reduce((s, o) => s + o.total, 0),
-    totalDP:      orders.reduce((s, o) => s + o.dp_amount, 0),
-    totalSisa:    orders.reduce((s, o) => s + o.remaining, 0),
-  }), [orders])
+  const stats = useMemo(() => {
+    const now       = new Date(); now.setHours(0,0,0,0)
+    const thisMonth = new Date().toISOString().slice(0, 7) // 'YYYY-MM'
+
+    // Acara terdekat (belum selesai, event_date >= hari ini)
+    const upcoming = orders
+      .filter(o => o.status !== 'selesai' && o.event_date >= today)
+      .sort((a, b) => a.event_date.localeCompare(b.event_date))
+    const nearest = upcoming[0] ?? null
+
+    // Piutang aktif (belum lunas/selesai)
+    const piutangOrders = orders.filter(o => o.status !== 'lunas' && o.status !== 'selesai')
+    const totalPiutang  = piutangOrders.reduce((s, o) => s + o.remaining, 0)
+
+    // Order bulan ini
+    const bulanIni      = orders.filter(o => o.event_date.startsWith(thisMonth))
+    const totalBulanIni = bulanIni.reduce((s, o) => s + o.total, 0)
+
+    // Perlu perhatian: overdue + urgent (≤3 hari, belum selesai)
+    const needAttention = orders.filter(o => {
+      const d = daysUntil(o.event_date)
+      return o.status !== 'selesai' && (
+        (d < 0 && o.status !== 'lunas') ||   // overdue
+        (d >= 0 && d <= 3)                    // urgent
+      )
+    })
+
+    return {
+      totalTagihan: orders.reduce((s, o) => s + o.total, 0),
+      totalDP:      orders.reduce((s, o) => s + o.dp_amount, 0),
+      totalSisa:    orders.reduce((s, o) => s + o.remaining, 0),
+      nearest,
+      nearestDays:  nearest ? daysUntil(nearest.event_date) : null,
+      totalPiutang,
+      piutangCount: piutangOrders.length,
+      bulanIniCount:   bulanIni.length,
+      totalBulanIni,
+      attentionCount:  needAttention.length,
+      overdueCount:    needAttention.filter(o => daysUntil(o.event_date) < 0).length,
+      urgentCount:     needAttention.filter(o => { const d = daysUntil(o.event_date); return d >= 0 && d <= 3 }).length,
+    }
+  }, [orders])
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-base)', paddingBottom: 80 }}>
 
-      {/* ── Header ──────────────────────────────────────────────────────────── */}
-      <div style={{
-        background: '#fff',
-        borderBottom: '1px solid #F3F4F6',
-        padding: '16px 20px 0',
-        position: 'sticky', top: 0, zIndex: 10,
-      }}>
-        {/* Top row */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
-          <div>
-            <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+      {/* ── WRAPPER — batasi lebar di desktop ──────────────────────────────────── */}
+      <div style={{ maxWidth: 480, margin: '0 auto' }}>
+
+        {/* HERO — ikut struktur referensi persis */}
+        <div style={{ background: 'var(--accent)', padding: '20px 20px 32px', position: 'relative' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.7)', letterSpacing: '.04em', textTransform: 'uppercase' }}>
               🍱 Catering
-            </h1>
-            <p style={{ margin: '2px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>
-              {orders.length} order · {fmt(stats.totalSisa)} belum lunas
-            </p>
-          </div>
-
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            {/* View mode toggle — desktop only */}
-            <div className="view-toggle" style={{ display: 'flex', background: '#F3F4F6', borderRadius: 8, padding: 3, gap: 2 }}>
-              {([['list', '☰'], ['kanban', '⊞'], ['timeline', '◎']] as const).map(([mode, icon]) => (
-                <button key={mode} onClick={() => setViewMode(mode)} title={mode} style={{
-                  padding: '5px 9px', borderRadius: 6, border: 'none', cursor: 'pointer',
-                  fontSize: 13,
-                  background: viewMode === mode ? '#fff' : 'transparent',
-                  color:      viewMode === mode ? 'var(--accent)' : '#9CA3AF',
-                  boxShadow:  viewMode === mode ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
-                  transition: 'all 0.12s',
-                }}>{icon}</button>
-              ))}
+            </span>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <div className="view-toggle" style={{ display: 'flex', background: 'rgba(0,0,0,0.18)', borderRadius: 8, padding: 3, gap: 2 }}>
+                {([['list','☰'],['kanban','⊞'],['timeline','◎']] as const).map(([mode, icon]) => (
+                  <button key={mode} onClick={() => setViewMode(mode)} style={{
+                    padding: '4px 8px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                    fontSize: 12, color: '#fff',
+                    background: viewMode === mode ? 'rgba(255,255,255,0.22)' : 'transparent',
+                  }}>{icon}</button>
+                ))}
+              </div>
+              <button onClick={() => setShowAdd(true)} style={{
+                background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff',
+                fontSize: 12, fontWeight: 600, padding: '6px 14px', borderRadius: 20, cursor: 'pointer',
+              }}>+ Order</button>
             </div>
-
-            <button onClick={() => setShowAdd(true)} style={{
-              padding: '9px 16px', borderRadius: 9, border: 'none',
-              background: 'var(--accent)', color: '#fff',
-              fontWeight: 700, fontSize: 14, cursor: 'pointer',
-              display: 'flex', alignItems: 'center', gap: 5,
-              whiteSpace: 'nowrap',
-            }}>
-              + Order
-            </button>
           </div>
+
+          <p style={{ margin: '0 0 6px', fontSize: 11, color: 'rgba(255,255,255,0.6)', fontWeight: 500, letterSpacing: '.03em', textTransform: 'uppercase' }}>
+            Total piutang aktif
+          </p>
+          <p style={{ margin: 0, fontSize: 36, fontWeight: 800, color: '#fff', lineHeight: 1, letterSpacing: '-1px' }}>
+            {fmt(stats.totalPiutang)}
+          </p>
+          <p style={{ margin: '6px 0 0', fontSize: 13, color: 'rgba(255,255,255,0.65)' }}>
+            {orders.length} order · {stats.piutangCount} belum lunas
+          </p>
         </div>
 
-        {/* Stats strip — desktop */}
+        {/* CARDS FLOAT — persis referensi: grid 2 col, marginTop negatif, z-index */}
         {orders.length > 0 && (
-          <div className="stats-strip" style={{
-            display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
-            gap: 1, background: '#F3F4F6',
-            borderRadius: 10, overflow: 'hidden',
-            marginBottom: 14,
+          <div style={{
+            display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10,
+            padding: '0 14px', marginTop: -18, position: 'relative', zIndex: 2,
           }}>
-            {[
-              { label: 'Total Tagihan', value: fmt(stats.totalTagihan), color: 'var(--text-primary)' },
-              { label: 'Sudah Masuk',   value: fmt(stats.totalDP),      color: '#15803D' },
-              { label: 'Belum Lunas',   value: fmt(stats.totalSisa),    color: stats.totalSisa > 0 ? '#DC2626' : '#15803D' },
-            ].map((s, i) => (
-              <div key={i} style={{ background: '#fff', padding: '10px 14px', textAlign: 'center' }}>
-                <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)' }}>{s.label}</p>
-                <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: s.color }}>{s.value}</p>
-              </div>
-            ))}
+            {/* Acara Terdekat */}
+            <div style={{ background: '#fff', borderRadius: 14, padding: '13px 14px', boxShadow: '0 2px 12px rgba(0,0,0,0.08)' }}>
+              <p style={{ margin: '0 0 6px', fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+                Acara Terdekat
+              </p>
+              {stats.nearest ? (
+                <>
+                  <p style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 800, color: '#111', lineHeight: 1.1 }}>
+                    {stats.nearest.customer_name}
+                  </p>
+                  <p style={{ margin: '0 0 5px', fontSize: 11, color: '#9CA3AF' }}>
+                    {fmtDateShort(stats.nearest.event_date)}
+                    {stats.nearest.event_time ? ` · ${stats.nearest.event_time}` : ''}
+                  </p>
+                  <span style={{
+                    display: 'inline-block', fontSize: 10, fontWeight: 700,
+                    padding: '2px 8px', borderRadius: 99,
+                    background: stats.nearestDays === 0 ? '#FEF2F2' : stats.nearestDays! <= 3 ? '#FFFBEB' : '#F0FDF4',
+                    color:      stats.nearestDays === 0 ? '#DC2626' : stats.nearestDays! <= 3 ? '#B45309' : '#15803D',
+                  }}>
+                    {stats.nearestDays === 0 ? 'Hari ini' : stats.nearestDays === 1 ? 'Besok' : `${stats.nearestDays} hari lagi`}
+                  </span>
+                </>
+              ) : (
+                <p style={{ margin: 0, fontSize: 13, color: '#9CA3AF', fontWeight: 600 }}>Belum ada</p>
+              )}
+            </div>
+
+            {/* Bulan Ini */}
+            <div style={{ background: '#fff', borderRadius: 14, padding: '13px 14px', boxShadow: '0 2px 12px rgba(0,0,0,0.08)' }}>
+              <p style={{ margin: '0 0 6px', fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+                Bulan Ini
+              </p>
+              <p style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 800, color: '#111', lineHeight: 1.1 }}>
+                {stats.bulanIniCount} order
+              </p>
+              <p style={{ margin: '0 0 5px', fontSize: 11, color: '#9CA3AF' }}>
+                {fmt(stats.totalBulanIni)} nilai
+              </p>
+              <span style={{
+                display: 'inline-block', fontSize: 10, fontWeight: 700,
+                padding: '2px 8px', borderRadius: 99,
+                background: stats.attentionCount > 0 ? '#FFFBEB' : '#F0FDF4',
+                color:      stats.attentionCount > 0 ? '#B45309' : '#15803D',
+              }}>
+                {stats.attentionCount > 0 ? `${stats.attentionCount} perlu perhatian` : 'Aman ✓'}
+              </span>
+            </div>
           </div>
         )}
 
-        {/* Filter tabs */}
-        <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 12 }}>
-          {FILTER_TABS.map(tab => {
-            const active = filter === tab.key
-            const count  = counts[tab.key] ?? 0
-            return (
-              <button key={tab.key} onClick={() => setFilter(tab.key)} style={{
-                flexShrink: 0, padding: '6px 14px', borderRadius: 99,
-                border:     `1.5px solid ${active ? 'var(--accent)' : '#E5E7EB'}`,
-                background: active ? 'var(--accent)' : '#fff',
-                color:      active ? '#fff' : 'var(--text-secondary)',
-                fontSize: 13, fontWeight: 600, cursor: 'pointer',
-                display: 'flex', alignItems: 'center', gap: 5,
-                transition: 'all 0.12s',
-              }}>
-                {tab.key !== 'semua' && (
-                  <span style={{
-                    width: 7, height: 7, borderRadius: '50%', display: 'inline-block',
-                    background: active ? 'rgba(255,255,255,0.6)' : STATUS_CFG[tab.key as OrderStatus].dot,
-                  }} />
-                )}
-                {tab.label}
-                {count > 0 && (
-                  <span style={{
-                    fontSize: 11, fontWeight: 700, borderRadius: 99, padding: '0 6px',
-                    background: active ? 'rgba(255,255,255,0.25)' : '#F3F4F6',
-                    color:      active ? '#fff' : 'var(--text-muted)',
-                  }}>{count}</span>
-                )}
-              </button>
-            )
-          })}
+        {/* BODY — background abu seperti referensi */}
+        <div style={{ background: 'var(--bg-base)', padding: '18px 14px 0' }}>
+
+          {/* Filter tabs — merah saat aktif persis referensi */}
+          <div style={{ display: 'flex', gap: 6, overflowX: 'auto', marginBottom: 12, paddingBottom: 2 }}
+            className="hide-scroll">
+            {FILTER_TABS.map(tab => {
+              const active = filter === tab.key
+              const count  = counts[tab.key] ?? 0
+              return (
+                <button key={tab.key} onClick={() => setFilter(tab.key)} style={{
+                  flexShrink: 0, padding: '6px 14px', borderRadius: 99,
+                  border: `1.5px solid ${active ? 'var(--accent)' : '#E5E7EB'}`,
+                  background: active ? 'var(--accent)' : '#fff',
+                  color:      active ? '#fff' : '#6B7280',
+                  fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 5,
+                  transition: 'all 0.12s',
+                }}>
+                  {tab.key !== 'semua' && (
+                    <span style={{
+                      width: 5, height: 5, borderRadius: '50%', display: 'inline-block', flexShrink: 0,
+                      background: active ? 'rgba(255,255,255,0.7)' : STATUS_CFG[tab.key as OrderStatus].dot,
+                    }} />
+                  )}
+                  {tab.label}
+                  {count > 0 && (
+                    <span style={{
+                      fontSize: 10, fontWeight: 700, padding: '0 6px', borderRadius: 99,
+                      background: active ? 'rgba(255,255,255,0.25)' : '#F3F4F6',
+                      color:      active ? '#fff' : '#6B7280',
+                    }}>{count}</span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Section label */}
+          <p style={{ margin: '0 0 10px 2px', fontSize: 11, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+            {filtered.length} order ditemukan
+          </p>
+
         </div>
       </div>
 
-      {/* ── Content ─────────────────────────────────────────────────────────── */}
-      <div style={{ padding: '16px 16px 0', maxWidth: 960, margin: '0 auto' }}>
+      {/* ── Content — masuk dalam wrapper maxWidth 480 ──────────────────────── */}
+      <div style={{ maxWidth: 480, margin: '0 auto', background: 'var(--bg-base)', padding: '0 14px 16px' }}>
         {loading ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {[1,2,3].map(i => (
               <div key={i} style={{
-                height: 130, borderRadius: 12, background: '#fff',
+                height: 120, borderRadius: 12, background: '#fff',
                 border: '1px solid #F3F4F6',
                 animation: 'pulse 1.4s ease-in-out infinite',
               }} />
@@ -1294,9 +1382,9 @@ export default function CateringPage() {
           <EmptyState filter={filter} onAdd={() => setShowAdd(true)} />
         ) : (
           <>
-            {/* Mobile selalu list */}
+            {/* Mobile: selalu list */}
             <div className="mobile-list">
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {filtered.map(o => (
                   <OrderCard key={o.id} order={o} onClick={() => setDetailOrder(o)} />
                 ))}
@@ -1306,7 +1394,7 @@ export default function CateringPage() {
             {/* Desktop: sesuai viewMode */}
             <div className="desktop-view">
               {viewMode === 'list' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {filtered.map(o => (
                     <OrderCard key={o.id} order={o} onClick={() => setDetailOrder(o)} />
                   ))}
@@ -1341,20 +1429,21 @@ export default function CateringPage() {
       <style>{`
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.45} }
 
-        /* Mobile: tampilkan list, sembunyikan desktop view & toggle */
+        /* Mobile */
         @media (max-width: 767px) {
-          .desktop-view  { display: none !important; }
-          .mobile-list   { display: block !important; }
-          .view-toggle   { display: none !important; }
-          .stats-strip   { display: none !important; }
+          .desktop-view { display: none !important; }
+          .mobile-list  { display: block !important; }
+          .view-toggle  { display: none !important; }
         }
 
-        /* Desktop: tampilkan desktop view, sembunyikan mobile list & FAB */
         @media (min-width: 768px) {
-          .desktop-view  { display: block !important; }
-          .mobile-list   { display: none !important; }
-          .mobile-fab    { display: none !important; }
+          .desktop-view { display: block !important; }
+          .mobile-list  { display: none !important; }
+          .mobile-fab   { display: none !important; }
         }
+
+        .hide-scroll::-webkit-scrollbar { display: none; }
+        .hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
       `}</style>
 
       {/* Modals */}

@@ -6,14 +6,12 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-// Format Rupiah
-export function formatRupiah(amount: number, short = false): string {
-  if (short) {
-    if (amount >= 1_000_000_000) return `Rp ${(amount / 1_000_000_000).toFixed(1)}M`
-    if (amount >= 1_000_000) return `Rp ${(amount / 1_000_000).toFixed(1)}jt`
-    if (amount >= 1_000) return `Rp ${(amount / 1_000).toFixed(0)}rb`
-    return `Rp ${amount}`
-  }
+/**
+ * Format Rupiah — SELALU format penuh: Rp 1.000.000
+ * Parameter `short` dihapus karena tidak dipakai lagi.
+ * Semua pemanggil formatRupiah(x, true) otomatis dapat format penuh.
+ */
+export function formatRupiah(amount: number, _short = false): string {
   return new Intl.NumberFormat('id-ID', {
     style: 'currency',
     currency: 'IDR',
