@@ -9,9 +9,9 @@ import type { Transaction } from '@/types'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell,
+  BarChart, Bar, LabelList,
 } from 'recharts'
 
-// ── FAKE DATA ─────────────────────────────────────────────────────────────────
 const TODAY = toISODate()
 
 function makeTime(h: number, m: number) {
@@ -21,19 +21,20 @@ function makeTime(h: number, m: number) {
 }
 
 const FAKE_TXS: Transaction[] = [
-  { id:'1', store_id:'x', type:'income',  product_id:'p1', product_name:'Lele Goreng',  category:'Penjualan', qty:3, amount:75000,  profit:30000, date:TODAY, source:'kasir',  created_at: makeTime(9,15)  },
-  { id:'2', store_id:'x', type:'income',  product_id:'p2', product_name:'Ayam Goreng',  category:'Penjualan', qty:2, amount:60000,  profit:24000, date:TODAY, source:'kasir',  created_at: makeTime(10,30) },
-  { id:'3', store_id:'x', type:'expense', product_name:undefined, category:'Bahan Baku',  amount:200000, profit:0, date:TODAY, source:'manual', created_at: makeTime(11,0)  },
-  { id:'4', store_id:'x', type:'income',  product_id:'p1', product_name:'Lele Goreng',  category:'Penjualan', qty:5, amount:125000, profit:50000, date:TODAY, source:'kasir',  created_at: makeTime(12,10) },
-  { id:'5', store_id:'x', type:'income',  product_id:'p3', product_name:'Nasi Putih',   category:'Penjualan', qty:8, amount:40000,  profit:20000, date:TODAY, source:'kasir',  created_at: makeTime(12,25) },
-  { id:'6', store_id:'x', type:'income',  product_id:'p2', product_name:'Ayam Goreng',  category:'Penjualan', qty:4, amount:120000, profit:48000, date:TODAY, source:'kasir',  created_at: makeTime(12,55) },
-  { id:'7', store_id:'x', type:'income',  product_id:'p4', product_name:'Es Teh',       category:'Penjualan', qty:10,amount:50000,  profit:30000, date:TODAY, source:'kasir',  created_at: makeTime(13,20) },
-  { id:'8', store_id:'x', type:'income',  product_id:'p1', product_name:'Lele Goreng',  category:'Penjualan', qty:4, amount:100000, profit:40000, date:TODAY, source:'kasir',  created_at: makeTime(14,5)  },
-  { id:'9', store_id:'x', type:'expense', product_name:undefined, category:'Gas & Energi', amount:50000, profit:0, date:TODAY, source:'manual', created_at: makeTime(14,30) },
-  { id:'10',store_id:'x', type:'income',  product_id:'p3', product_name:'Nasi Putih',   category:'Penjualan', qty:6, amount:30000,  profit:15000, date:TODAY, source:'kasir',  created_at: makeTime(15,45) },
+  { id:'1',  store_id:'x', type:'income',  product_id:'p1', product_name:'Lele Goreng',  category:'Penjualan', qty:3, amount:75000,  profit:30000, date:TODAY, source:'kasir',  payment_method:'cash', created_at: makeTime(9,15)  },
+  { id:'2',  store_id:'x', type:'income',  product_id:'p2', product_name:'Ayam Goreng',  category:'Penjualan', qty:2, amount:60000,  profit:24000, date:TODAY, source:'kasir',  payment_method:'qris', created_at: makeTime(10,30) },
+  { id:'3',  store_id:'x', type:'expense', product_name:undefined, category:'Bahan Baku',  amount:200000, profit:0, date:TODAY, source:'manual', created_at: makeTime(11,0)  },
+  { id:'4',  store_id:'x', type:'income',  product_id:'p1', product_name:'Lele Goreng',  category:'Penjualan', qty:5, amount:125000, profit:50000, date:TODAY, source:'kasir',  payment_method:'cash', created_at: makeTime(12,10) },
+  { id:'5',  store_id:'x', type:'income',  product_id:'p3', product_name:'Nasi Putih',   category:'Penjualan', qty:8, amount:40000,  profit:20000, date:TODAY, source:'kasir',  payment_method:'qris', created_at: makeTime(12,25) },
+  { id:'6',  store_id:'x', type:'income',  product_id:'p2', product_name:'Ayam Goreng',  category:'Penjualan', qty:4, amount:120000, profit:48000, date:TODAY, source:'kasir',  payment_method:'cash', created_at: makeTime(12,55) },
+  { id:'7',  store_id:'x', type:'income',  product_id:'p4', product_name:'Es Teh',       category:'Penjualan', qty:10,amount:50000,  profit:30000, date:TODAY, source:'kasir',  payment_method:'qris', created_at: makeTime(13,20) },
+  { id:'8',  store_id:'x', type:'income',  product_id:'p1', product_name:'Lele Goreng',  category:'Penjualan', qty:4, amount:100000, profit:40000, date:TODAY, source:'kasir',  payment_method:'cash', created_at: makeTime(14,5)  },
+  { id:'9',  store_id:'x', type:'expense', product_name:undefined, category:'Gas & Energi', amount:50000, profit:0, date:TODAY, source:'manual', created_at: makeTime(14,30) },
+  { id:'10', store_id:'x', type:'income',  product_id:'p3', product_name:'Nasi Putih',   category:'Penjualan', qty:6, amount:30000,  profit:15000, date:TODAY, source:'kasir',  payment_method:'cash', created_at: makeTime(15,45) },
 ]
 
 const DONUT_COLORS = ['#D92B2B','#F87171','#FBBF24','#A3A3A3','#BFDBFE']
+const PAY_COLORS   = { cash: '#D92B2B', qris: '#F87171' }
 
 export default function DashboardPage() {
   const currentStore = useAppStore((s) => s.currentStore)
@@ -47,22 +48,60 @@ export default function DashboardPage() {
   const [loading,      setLoading]      = useState(!skipSupabase)
 
   useEffect(() => {
-    if (skipSupabase) {
+    // fix bug #2/#4: FAKE_TXS sekarang HANYA untuk onboarding pertama kali
+    // (belum pernah ada toko sama sekali). Sebelumnya FAKE_TXS selalu dipakai
+    // setiap kali dummy/offline, jadi transaksi asli yang sudah diinput
+    // (lewat kasir/pengeluaran) tidak pernah kelihatan di dashboard.
+    if (!currentStore) {
       setTransactions(FAKE_TXS)
       setLoading(false)
       return
     }
+
+    if (skipSupabase) {
+      // Baca gabungan sales + expenses hari ini dari pendingSync (Zustand persist)
+      const pending = useAppStore.getState().pendingSync
+      const today   = toISODate()
+
+      const sales: Transaction[] = pending
+        .filter((p) => p.table === 'sales' && p.action === 'insert')
+        .map((p) => p.payload as any)
+        .filter((t) => t.date === today)
+        .map((t) => ({ ...t, type: 'income' as const }))
+
+      const expenses: Transaction[] = pending
+        .filter((p) => p.table === 'expenses' && p.action === 'insert')
+        .map((p) => p.payload as any)
+        .filter((t) => t.date === today)
+        .map((t) => ({ ...t, type: 'expense' as const }))
+
+      setTransactions(
+        [...sales, ...expenses].sort((a, b) => b.created_at.localeCompare(a.created_at))
+      )
+      setLoading(false)
+      return
+    }
+
     const load = async () => {
       setLoading(true)
       const supabase = createClient()
-      const { data } = await supabase
-        .from('transactions')
-        .select('*')
-        .eq('store_id', currentStore!.id)
-        .eq('date', toISODate())
-        .order('created_at', { ascending: false })
-        .limit(200)
-      setTransactions((data as Transaction[]) ?? [])
+      const today = toISODate()
+
+      const [{ data: salesData }, { data: expenseData }] = await Promise.all([
+        supabase.from('sales').select('*')
+          .eq('store_id', currentStore.id).eq('date', today)
+          .order('created_at', { ascending: false }).limit(200),
+        supabase.from('expenses').select('*')
+          .eq('store_id', currentStore.id).eq('date', today)
+          .order('created_at', { ascending: false }).limit(200),
+      ])
+
+      const merged: Transaction[] = [
+        ...((salesData ?? []).map((t: any) => ({ ...t, type: 'income' as const }))),
+        ...((expenseData ?? []).map((t: any) => ({ ...t, type: 'expense' as const }))),
+      ].sort((a, b) => b.created_at.localeCompare(a.created_at))
+
+      setTransactions(merged)
       setLoading(false)
     }
     load()
@@ -73,6 +112,7 @@ export default function DashboardPage() {
   const profit  = income - expense
   const txCount = transactions.filter(t => t.type === 'income').length
 
+  // Per-jam
   const hourlyData = useMemo(() => {
     const map: Record<number,number> = {}
     transactions.filter(t => t.type === 'income').forEach(t => {
@@ -90,6 +130,7 @@ export default function DashboardPage() {
     hourlyData.reduce((a,b) => a.omzet>b.omzet ? a : b)
   ,[hourlyData])
 
+  // Per-produk
   const productData = useMemo(() => {
     const map: Record<string,number> = {}
     transactions.filter(t => t.type==='income' && t.product_name).forEach(t => {
@@ -99,6 +140,22 @@ export default function DashboardPage() {
       .sort((a,b)=>b[1]-a[1]).slice(0,5)
       .map(([name,total])=>({ name, total, pct: income > 0 ? Math.round((total/income)*100) : 0 }))
   }, [transactions, income])
+
+  // Per metode pembayaran (income only)
+  const paymentData = useMemo(() => {
+    const cashTotal = transactions
+      .filter(t => t.type === 'income' && t.payment_method === 'cash')
+      .reduce((s,t) => s + t.amount, 0)
+    const qrisTotal = transactions
+      .filter(t => t.type === 'income' && t.payment_method === 'qris')
+      .reduce((s,t) => s + t.amount, 0)
+    const cashCount = transactions.filter(t => t.type === 'income' && t.payment_method === 'cash').length
+    const qrisCount = transactions.filter(t => t.type === 'income' && t.payment_method === 'qris').length
+    return [
+      { method: 'Cash',  icon: '💵', total: cashTotal, count: cashCount, color: PAY_COLORS.cash },
+      { method: 'QRIS',  icon: '📱', total: qrisTotal, count: qrisCount, color: PAY_COLORS.qris },
+    ]
+  }, [transactions])
 
   const recent = useMemo(() => [...transactions].slice(0, 5), [transactions])
 
@@ -124,114 +181,70 @@ export default function DashboardPage() {
   }
 
   return (
-    <div style={{ background: 'var(--bg-base)', minHeight: '100vh' }}>
+    <div style={{ background:'var(--bg-base)', minHeight:'100vh' }}>
     <div style={{ maxWidth:1100, margin:'0 auto', padding:'24px 24px 80px' }} className="dash-wrap">
 
-      {/* ══ HERO CARD ══ */}
+      {/* ══ HERO ══ */}
       <div style={{ background:'#D92B2B', borderRadius:16, color:'white', marginBottom:20, overflow:'hidden' }}>
 
-        {/* ── MOBILE (≤767px) ── */}
+        {/* Mobile */}
         <div className="hero-mobile" style={{ padding:'20px 20px 16px' }}>
-          {/* Baris 1: Logo + Nama + Tanggal */}
           <div style={{ display:'flex', alignItems:'flex-start', gap:10, marginBottom:12 }}>
-            <div style={{
-              width:36, height:36, borderRadius:10, flexShrink:0,
+            <div style={{ width:36, height:36, borderRadius:10, flexShrink:0,
               background:'rgba(255,255,255,0.2)',
-              display:'flex', alignItems:'center', justifyContent:'center', fontSize:18,
-              marginTop:2,
-            }}>🍽️</div>
+              display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, marginTop:2 }}>🍽️</div>
             <div>
-              <div style={{ fontSize:15, fontWeight:700, lineHeight:1.2 }}>
-                {currentStore?.name ?? 'Warung Demo'}
-              </div>
-              <div style={{ fontSize:11, opacity:0.75, marginTop:2 }}>
-                {formatDate(new Date(), 'long')}
-              </div>
+              <div style={{ fontSize:15, fontWeight:700, lineHeight:1.2 }}>{currentStore?.name ?? 'Warung Demo'}</div>
+              <div style={{ fontSize:11, opacity:0.75, marginTop:2 }}>{formatDate(new Date(), 'long')}</div>
             </div>
           </div>
-          {/* Baris 2: Badge Ramai kiri + Bulan kanan */}
           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12, gap:8 }}>
             {peakHour ? (
-              <div style={{
-                background:'rgba(255,255,255,0.18)', borderRadius:8,
+              <div style={{ background:'rgba(255,255,255,0.18)', borderRadius:8,
                 padding:'5px 10px', fontSize:11, fontWeight:600,
-                display:'inline-flex', alignItems:'center', gap:4, whiteSpace:'nowrap',
-              }}>
+                display:'inline-flex', alignItems:'center', gap:4, whiteSpace:'nowrap' }}>
                 ⚡ Ramai {peakHour.jam} · {formatRupiah(peakHour.omzet, true)}
               </div>
             ) : <div />}
-            <div style={{
-              background:'rgba(255,255,255,0.18)', borderRadius:8,
-              padding:'5px 10px', fontSize:11, fontWeight:600,
-              whiteSpace:'nowrap', flexShrink:0,
-            }}>
+            <div style={{ background:'rgba(255,255,255,0.18)', borderRadius:8,
+              padding:'5px 10px', fontSize:11, fontWeight:600, whiteSpace:'nowrap', flexShrink:0 }}>
               {new Date().toLocaleDateString('id-ID', { month:'long', year:'numeric' })}
             </div>
           </div>
-          {/* Baris 3: Narasi */}
-          <div style={{
-            background:'rgba(255,255,255,0.12)', borderRadius:10,
-            padding:'10px 14px', fontSize:12, lineHeight:1.6, opacity:0.95,
-          }}>
+          <div style={{ background:'rgba(255,255,255,0.12)', borderRadius:10,
+            padding:'10px 14px', fontSize:12, lineHeight:1.6, opacity:0.95 }}>
             🍱 {heroNarasi}
           </div>
         </div>
 
-        {/* ── DESKTOP (≥768px) ── */}
-        {/* Layout: kiri = logo+nama+narasi (sejajar atas), kanan = tanggal+omzet+laba */}
+        {/* Desktop */}
         <div className="hero-desktop" style={{ padding:'24px 28px', alignItems:'flex-start', gap:28 }}>
-
-          {/* Kolom kiri */}
           <div style={{ flex:1, display:'flex', flexDirection:'column', gap:14 }}>
-            {/* Logo + nama toko — sejajar dengan tanggal di kanan */}
             <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-              <div style={{
-                width:36, height:36, borderRadius:10, flexShrink:0,
+              <div style={{ width:36, height:36, borderRadius:10, flexShrink:0,
                 background:'rgba(255,255,255,0.2)',
-                display:'flex', alignItems:'center', justifyContent:'center', fontSize:18,
-              }}>🍽️</div>
+                display:'flex', alignItems:'center', justifyContent:'center', fontSize:18 }}>🍽️</div>
               <div style={{ fontSize:17, fontWeight:700, letterSpacing:'-0.2px' }}>
-                {currentStore?.name ?? 'Warung Demo'}
-              </div>
+                {currentStore?.name ?? 'Warung Demo'}</div>
             </div>
-            {/* Box narasi */}
-            <div style={{
-              background:'rgba(255,255,255,0.12)', borderRadius:10,
-              padding:'12px 16px', fontSize:13, lineHeight:1.65, opacity:0.95,
-            }}>
+            <div style={{ background:'rgba(255,255,255,0.12)', borderRadius:10,
+              padding:'12px 16px', fontSize:13, lineHeight:1.65, opacity:0.95 }}>
               🍱 {heroNarasi}
             </div>
           </div>
-
-          {/* Divider vertikal */}
           <div style={{ width:1, background:'rgba(255,255,255,0.18)', alignSelf:'stretch', flexShrink:0 }} />
-
-          {/* Kolom kanan: tanggal atas, lalu omzet, lalu laba+trx */}
           <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', justifyContent:'flex-start', gap:6, minWidth:220, flexShrink:0 }}>
-            {/* Tanggal — sejajar dengan baris logo di kiri */}
-            <div style={{ fontSize:12, opacity:0.7, marginBottom:4 }}>
-              {formatDate(new Date(), 'long')}
-            </div>
-            {/* Label omzet */}
-            <div style={{ fontSize:10, opacity:0.65, letterSpacing:'0.08em', textTransform:'uppercase' }}>
-              Omzet Hari Ini
-            </div>
-            {/* Angka omzet besar */}
+            <div style={{ fontSize:12, opacity:0.7, marginBottom:4 }}>{formatDate(new Date(), 'long')}</div>
+            <div style={{ fontSize:10, opacity:0.65, letterSpacing:'0.08em', textTransform:'uppercase' }}>Omzet Hari Ini</div>
             <div style={{ fontSize:32, fontWeight:700, fontFamily:'Nunito,sans-serif', letterSpacing:'-0.5px', lineHeight:1.1 }}>
-              {formatRupiah(income)}
-            </div>
-            {/* Transaksi + laba */}
+              {formatRupiah(income)}</div>
             <div style={{ fontSize:12, opacity:0.8, marginTop:2 }}>
               {txCount} transaksi · Laba {formatRupiah(profit)}
-              {isDummy && (
-                <span style={{ marginLeft:8, background:'rgba(255,255,255,0.2)', borderRadius:6, padding:'2px 7px', fontSize:11 }}>Demo</span>
-              )}
+              {isDummy && <span style={{ marginLeft:8, background:'rgba(255,255,255,0.2)', borderRadius:6, padding:'2px 7px', fontSize:11 }}>Demo</span>}
             </div>
           </div>
-
         </div>
       </div>
-      {/* ══ END HERO ══ */}
 
       {/* KPI 4 col */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:20 }} className="kpi-4col">
@@ -242,9 +255,10 @@ export default function DashboardPage() {
         <KpiCard icon="🛒" bg="#F3E8FF" label="Produk Terlaris" value={productData[0]?.name ?? '—'} delta={productData[0] ? formatRupiah(productData[0].total,true) : 'Belum ada'} deltaColor="#7C3AED" />
       </div>
 
-      {/* Chart row */}
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:20 }} className="chart-2col">
+      {/* Chart row — area + donut */}
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:16 }} className="chart-2col">
 
+        {/* Area chart per jam */}
         <div style={{ background:'var(--bg-surface)', border:'1px solid var(--border)', borderRadius:14, padding:20 }}>
           <div style={{ fontSize:14, fontWeight:600, color:'var(--text-primary)', marginBottom:2 }}>Penjualan Per Jam</div>
           <div style={{ fontSize:12, color:'var(--text-muted)', marginBottom:14 }}>Omzet masuk tiap jam</div>
@@ -275,6 +289,7 @@ export default function DashboardPage() {
           </ResponsiveContainer>
         </div>
 
+        {/* Donut per produk */}
         <div style={{ background:'var(--bg-surface)', border:'1px solid var(--border)', borderRadius:14, padding:20 }}>
           <div style={{ fontSize:14, fontWeight:600, color:'var(--text-primary)', marginBottom:2 }}>Kontribusi Per Produk</div>
           <div style={{ fontSize:12, color:'var(--text-muted)', marginBottom:14 }}>Omzet per produk hari ini · {formatRupiah(income,true)}</div>
@@ -308,13 +323,89 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {/* ══ DIAGRAM METODE PEMBAYARAN (bar horizontal) ══ */}
+      {/* Desktop/Tab: full width spanning 2 kolom di atas; Mobile: card normal */}
+      <div style={{ background:'var(--bg-surface)', border:'1px solid var(--border)', borderRadius:14, padding:20, marginBottom:20 }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:2 }}>
+          <div style={{ fontSize:14, fontWeight:600, color:'var(--text-primary)' }}>Metode Pembayaran</div>
+          <div style={{ fontSize:12, color:'var(--text-muted)' }}>Hari ini</div>
+        </div>
+        <div style={{ fontSize:12, color:'var(--text-muted)', marginBottom:16 }}>
+          Perbandingan omzet Cash vs QRIS
+        </div>
+
+        {paymentData.every(p => p.total === 0) ? (
+          <div style={{ height:80, display:'flex', alignItems:'center', justifyContent:'center', color:'var(--text-muted)', fontSize:13 }}>
+            Belum ada data pembayaran
+          </div>
+        ) : (
+          <>
+            {/* Bar chart horizontal — explicit height biar muncul di mobile */}
+            <div style={{ width:'100%', height:96 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={paymentData}
+                  layout="vertical"
+                  margin={{ top:6, right:72, left:0, bottom:6 }}
+                  barSize={26}
+                >
+                  <XAxis type="number" hide />
+                  <YAxis
+                    type="category"
+                    dataKey="method"
+                    width={46}
+                    tick={{ fontSize:12, fontWeight:700, fill:'var(--text-secondary)' }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <Tooltip
+                    contentStyle={{ fontSize:12, borderRadius:8, border:'1px solid var(--border)' }}
+                    formatter={(v:unknown) => [formatRupiah(v as number), 'Omzet']}
+                    cursor={{ fill:'rgba(0,0,0,0.04)' }}
+                  />
+                  <Bar dataKey="total" radius={[0,7,7,0]}>
+                    {paymentData.map((entry, i) => (
+                      <Cell key={i} fill={entry.color} />
+                    ))}
+                    <LabelList
+                      dataKey="total"
+                      position="right"
+                      formatter={(v:number) => formatRupiah(v, true)}
+                      style={{ fontSize:11, fontWeight:600, fill:'var(--text-secondary)' }}
+                    />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Legend bawah bar — rata tengah kiri-kanan */}
+            <div style={{ display:'flex', justifyContent:'space-around', marginTop:8 }}>
+              {paymentData.map((p) => {
+                const pct = income > 0 ? Math.round((p.total / income) * 100) : 0
+                return (
+                  <div key={p.method} style={{ display:'flex', alignItems:'center', gap:7 }}>
+                    <div style={{ width:10, height:10, borderRadius:3, background:p.color, flexShrink:0 }} />
+                    <div>
+                      <div style={{ fontSize:12, fontWeight:700, color:'var(--text-primary)' }}>
+                        {p.icon} {p.method}
+                        <span style={{ marginLeft:5, fontSize:11, fontWeight:600, color:p.color }}>{pct}%</span>
+                      </div>
+                      <div style={{ fontSize:11, color:'var(--text-muted)' }}>{p.count} transaksi</div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </>
+        )}
+      </div>
+
       {/* Transaksi terakhir */}
       <div style={{ background:'var(--bg-surface)', border:'1px solid var(--border)', borderRadius:14, overflow:'hidden' }}>
         <div style={{ padding:'16px 20px 12px', display:'flex', justifyContent:'space-between', alignItems:'center', borderBottom:'1px solid var(--border)' }}>
           <span style={{ fontSize:14, fontWeight:600, color:'var(--text-primary)' }}>Transaksi Hari Ini</span>
           <span style={{ fontSize:12, color:'var(--accent)', fontWeight:600, cursor:'pointer' }} onClick={() => router.push('/riwayat')}>
-            Lihat semua
-          </span>
+            Lihat semua</span>
         </div>
         {recent.length === 0 ? (
           <div style={{ padding:'32px 20px', textAlign:'center', color:'var(--text-muted)', fontSize:13 }}>
@@ -334,10 +425,19 @@ export default function DashboardPage() {
               <div style={{ fontSize:13, fontWeight:600, color:'var(--text-primary)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                 {t.product_name ?? t.category}
               </div>
-              <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:1 }}>
+              <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:1, display:'flex', alignItems:'center', gap:4 }}>
                 {t.type==='expense' ? `💸 ${t.category}` : t.source==='kasir' ? 'Kasir' : t.source==='catering' ? '🍱 Catering' : 'Manual'}
                 {' · '}{new Date(t.created_at).toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'})}
                 {t.qty && t.qty > 1 ? ` · ×${t.qty}` : ''}
+                {t.payment_method && (
+                  <span style={{
+                    marginLeft:4, fontSize:10, fontWeight:600, padding:'1px 6px', borderRadius:4,
+                    background: t.payment_method === 'cash' ? '#DCFCE7' : '#DBEAFE',
+                    color:      t.payment_method === 'cash' ? '#16A34A'  : '#2563EB',
+                  }}>
+                    {t.payment_method === 'cash' ? '💵 Cash' : '📱 QRIS'}
+                  </span>
+                )}
               </div>
             </div>
             <div style={{ fontSize:14, fontWeight:600, fontFamily:'Nunito,sans-serif', flexShrink:0,

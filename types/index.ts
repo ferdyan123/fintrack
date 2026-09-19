@@ -10,7 +10,7 @@ export interface Store {
   user_id: string
   name: string
   logo_url?: string
-  store_code: string // kode toko untuk kasir
+  store_code: string
   created_at: string
 }
 
@@ -20,7 +20,7 @@ export interface Product {
   id: string
   store_id: string
   name: string
-  icon: string // emoji fallback
+  icon: string
   photo_url?: string
   price: number
   hpp: number
@@ -32,7 +32,8 @@ export interface Product {
 
 // ─── Transactions ─────────────────────────────────────────────────────────────
 
-export type TransactionType = 'income' | 'expense'
+export type TransactionType   = 'income' | 'expense'
+export type PaymentMethodType = 'cash' | 'qris'
 
 export interface Transaction {
   id: string
@@ -47,6 +48,36 @@ export interface Transaction {
   note?: string
   date: string
   source: 'kasir' | 'catering' | 'manual'
+  payment_method?: PaymentMethodType
+  created_at: string
+}
+
+// ─── Sales (kasir) — tabel `sales` ─────────────────────────────────────────────
+export interface Sale {
+  id: string
+  store_id: string
+  product_id?: string
+  product_name?: string
+  category: string
+  qty: number
+  amount: number
+  profit: number
+  payment_method?: PaymentMethodType
+  note?: string
+  date: string
+  source: 'kasir' | 'catering'
+  created_at: string
+}
+
+// ─── Expenses (pengeluaran manual) — tabel `expenses` ──────────────────────────
+export interface Expense {
+  id: string
+  store_id: string
+  category: string
+  amount: number
+  note?: string
+  date: string
+  source: 'manual'
   created_at: string
 }
 
@@ -128,7 +159,7 @@ export interface DailySummary {
 }
 
 export interface MonthlySummary {
-  month: string // YYYY-MM
+  month: string
   income: number
   expense: number
   profit: number

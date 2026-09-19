@@ -3,7 +3,7 @@
 import { useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { BarChart2, Settings, LogOut, X } from 'lucide-react'
+import { BarChart2, Settings, LogOut, X, ClipboardList } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useAppStore } from '@/lib/store/appStore'
 
@@ -12,9 +12,13 @@ interface MoreDrawerProps {
   onClose: () => void
 }
 
+// fix: "Riwayat" sekarang dipindah ke sini (posisi di bottom nav utama
+// digantikan "Pengeluaran"), supaya bottom nav utama fokus ke halaman
+// yang lebih sering dipakai sehari-hari.
 const MORE_ITEMS = [
-  { href: '/analitik',   icon: BarChart2, label: 'Analitik'   },
-  { href: '/pengaturan', icon: Settings,  label: 'Pengaturan' },
+  { href: '/riwayat',    icon: ClipboardList, label: 'Riwayat'    },
+  { href: '/analitik',   icon: BarChart2,     label: 'Analitik'   },
+  { href: '/pengaturan', icon: Settings,      label: 'Pengaturan' },
 ]
 
 export function MoreDrawer({ open, onClose }: MoreDrawerProps) {
