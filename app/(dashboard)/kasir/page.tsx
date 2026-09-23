@@ -275,71 +275,74 @@ export default function KasirPage() {
           <MenuGrid products={products} getQty={getQty} onAdd={add} onMinus={minus} />
         </div>
 
-        {/* Sticky cart mobile */}
+        {/* ══ STICKY CART MOBILE — compact ══ */}
         {cart.length > 0 && (
           <div style={{
             position:'fixed', bottom:64, left:0, right:0,
             background:'var(--bg-surface)', borderTop:'2px solid var(--border)',
-            borderRadius:'20px 20px 0 0', boxShadow:'0 -8px 32px rgba(0,0,0,0.12)',
-            zIndex:30, maxHeight:'48dvh', display:'flex', flexDirection:'column',
+            borderRadius:'18px 18px 0 0', boxShadow:'0 -6px 24px rgba(0,0,0,0.10)',
+            zIndex:30, maxHeight:'38dvh', display:'flex', flexDirection:'column',
           }}>
-            <div style={{ width:36, height:4, background:'var(--border)',
-              borderRadius:99, margin:'10px auto 0', flexShrink:0 }} />
+            {/* Drag handle */}
+            <div style={{ width:32, height:3, background:'var(--border)',
+              borderRadius:99, margin:'8px auto 0', flexShrink:0 }} />
 
-            <div style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 16px 6px', flexShrink:0 }}>
-              <span style={{ fontSize:13, fontWeight:700, color:'var(--text-secondary)' }}>Pesanan</span>
+            {/* Header pesanan */}
+            <div style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 14px 4px', flexShrink:0 }}>
+              <span style={{ fontSize:12, fontWeight:700, color:'var(--text-secondary)' }}>Pesanan</span>
               {customerName && (
-                <span style={{ fontSize:12, fontWeight:600,
+                <span style={{ fontSize:11, fontWeight:600,
                   background:'var(--accent-subtle)', color:'var(--accent)',
-                  borderRadius:8, padding:'2px 8px' }}>{customerName}</span>
+                  borderRadius:8, padding:'1px 6px' }}>{customerName}</span>
               )}
-              <span style={{ marginLeft:'auto', fontSize:12, background:'var(--accent)',
-                color:'white', borderRadius:99, padding:'2px 8px', fontWeight:700 }}>
+              <span style={{ marginLeft:'auto', fontSize:11, background:'var(--accent)',
+                color:'white', borderRadius:99, padding:'1px 7px', fontWeight:700 }}>
                 {totalItems} item</span>
             </div>
 
-            <div style={{ overflowY:'auto', padding:'0 16px 6px',
-              display:'flex', flexDirection:'column', gap:6, maxHeight:112, minHeight:0 }}>
+            {/* List item — scrollable, compact */}
+            <div style={{ overflowY:'auto', padding:'0 14px 4px',
+              display:'flex', flexDirection:'column', gap:5, maxHeight:90, minHeight:0 }}>
               {cart.map((item) => (
-                <div key={item.product.id} style={{ display:'flex', alignItems:'center', gap:10,
-                  background:'var(--bg-elevated)', borderRadius:12, padding:'8px 12px' }}>
+                <div key={item.product.id} style={{ display:'flex', alignItems:'center', gap:8,
+                  background:'var(--bg-elevated)', borderRadius:10, padding:'6px 10px' }}>
                   {item.product.photo_url ? (
                     <img src={item.product.photo_url} alt={item.product.name} style={{
-                      width:32, height:32, borderRadius:8, objectFit:'cover', flexShrink:0 }} />
+                      width:28, height:28, borderRadius:6, objectFit:'cover', flexShrink:0 }} />
                   ) : (
-                    <span style={{ fontSize:20, flexShrink:0 }}>{item.product.icon}</span>
+                    <span style={{ fontSize:18, flexShrink:0 }}>{item.product.icon}</span>
                   )}
                   <div style={{ flex:1, minWidth:0 }}>
-                    <p style={{ margin:0, fontSize:13, fontWeight:600, color:'var(--text-primary)',
+                    <p style={{ margin:0, fontSize:12, fontWeight:600, color:'var(--text-primary)',
                       overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{item.product.name}</p>
-                    <p style={{ margin:'1px 0 0', fontSize:12, fontWeight:700, color:'var(--accent)' }}>
+                    <p style={{ margin:'1px 0 0', fontSize:11, fontWeight:700, color:'var(--accent)' }}>
                       {formatRp(item.product.price * item.qty)}</p>
                   </div>
-                  <div style={{ display:'flex', alignItems:'center', gap:5, flexShrink:0 }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:4, flexShrink:0 }}>
                     <button onClick={() => minus(item.product.id)} style={qBtn('var(--bg-surface)','var(--text-primary)')}>
-                      <Minus size={11} /></button>
-                    <span style={{ fontSize:13, fontWeight:800, minWidth:18, textAlign:'center' }}>{item.qty}</span>
+                      <Minus size={10} /></button>
+                    <span style={{ fontSize:12, fontWeight:800, minWidth:16, textAlign:'center' }}>{item.qty}</span>
                     <button onClick={() => add(item.product)} style={qBtn('var(--accent)','white')}>
-                      <Plus size={11} /></button>
+                      <Plus size={10} /></button>
                     <button onClick={() => remove(item.product.id)}
                       style={{ ...qBtn('var(--danger-bg)','var(--danger)'), marginLeft:2 }}>
-                      <Trash2 size={11} /></button>
+                      <Trash2 size={10} /></button>
                   </div>
                 </div>
               ))}
             </div>
 
-            {/* Metode bayar */}
-            <div style={{ padding:'8px 16px 0', flexShrink:0 }}>
-              <div style={{ display:'flex', gap:10, marginBottom:10 }}>
+            {/* Metode bayar — compact */}
+            <div style={{ padding:'6px 14px 0', flexShrink:0 }}>
+              <div style={{ display:'flex', gap:8, marginBottom:8 }}>
                 {PAY_OPTIONS.map((o) => (
                   <button key={o.key} onClick={() => setPayMethod(o.key)} style={{
-                    flex:1, padding:'6px 8px', borderRadius:10, cursor:'pointer',
+                    flex:1, padding:'5px 6px', borderRadius:9, cursor:'pointer',
                     border: payMethod === o.key ? '2px solid var(--accent)' : '1.5px solid var(--border)',
                     background: payMethod === o.key ? 'var(--accent-subtle)' : 'var(--bg-elevated)',
                     color: payMethod === o.key ? 'var(--accent)' : 'var(--text-secondary)',
-                    display:'flex', flexDirection:'column', alignItems:'center', gap:4,
-                    fontSize:12, fontWeight:700, transition:'all 0.15s ease',
+                    display:'flex', flexDirection:'column', alignItems:'center', gap:3,
+                    fontSize:11, fontWeight:700, transition:'all 0.15s ease',
                   }}>
                     {o.icon}{o.label}
                   </button>
@@ -347,27 +350,28 @@ export default function KasirPage() {
               </div>
             </div>
 
-            <div style={{ padding:'0 16px 14px', flexShrink:0 }}>
-              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
-                <span style={{ fontSize:13, color:'var(--text-secondary)', fontWeight:600 }}>Total</span>
-                <span style={{ fontSize:18, fontWeight:800, color:'var(--text-primary)',
+            {/* Total + tombol checkout */}
+            <div style={{ padding:'0 14px 12px', flexShrink:0 }}>
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
+                <span style={{ fontSize:12, color:'var(--text-secondary)', fontWeight:600 }}>Total</span>
+                <span style={{ fontSize:17, fontWeight:800, color:'var(--text-primary)',
                   fontFamily:'Nunito, sans-serif' }}>{formatRp(total)}</span>
               </div>
               <button onClick={handleCheckout} disabled={submitting} style={{
-                width:'100%', padding:'11px', borderRadius:12, border:'none',
+                width:'100%', padding:'10px', borderRadius:11, border:'none',
                 background: submitting ? '#bbb' : 'var(--accent)',
                 color:'white', fontSize:13, fontWeight:800,
                 cursor: submitting ? 'wait' : 'pointer',
                 display:'flex', alignItems:'center', justifyContent:'center', gap:8,
-                boxShadow:'0 4px 20px rgba(217,43,43,0.3)',
+                boxShadow:'0 4px 16px rgba(217,43,43,0.3)',
               }}>
-                {submitting ? 'Menyimpan...' : <><Check size={18} /> Selesai &amp; Catat</>}
+                {submitting ? 'Menyimpan...' : <><Check size={16} /> Selesai &amp; Catat</>}
               </button>
             </div>
           </div>
         )}
 
-        <div style={{ height: cart.length > 0 ? 380 : 80 }} />
+        <div style={{ height: cart.length > 0 ? 320 : 80 }} />
       </div>
 
       <style jsx global>{`

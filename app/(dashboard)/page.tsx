@@ -48,10 +48,6 @@ export default function DashboardPage() {
   const [loading,      setLoading]      = useState(!skipSupabase)
 
   useEffect(() => {
-    // fix bug #2/#4: FAKE_TXS sekarang HANYA untuk onboarding pertama kali
-    // (belum pernah ada toko sama sekali). Sebelumnya FAKE_TXS selalu dipakai
-    // setiap kali dummy/offline, jadi transaksi asli yang sudah diinput
-    // (lewat kasir/pengeluaran) tidak pernah kelihatan di dashboard.
     if (!currentStore) {
       setTransactions(FAKE_TXS)
       setLoading(false)
@@ -59,7 +55,6 @@ export default function DashboardPage() {
     }
 
     if (skipSupabase) {
-      // Baca gabungan sales + expenses hari ini dari pendingSync (Zustand persist)
       const pending = useAppStore.getState().pendingSync
       const today   = toISODate()
 
@@ -112,7 +107,6 @@ export default function DashboardPage() {
   const profit  = income - expense
   const txCount = transactions.filter(t => t.type === 'income').length
 
-  // Per-jam
   const hourlyData = useMemo(() => {
     const map: Record<number,number> = {}
     transactions.filter(t => t.type === 'income').forEach(t => {
@@ -130,7 +124,6 @@ export default function DashboardPage() {
     hourlyData.reduce((a,b) => a.omzet>b.omzet ? a : b)
   ,[hourlyData])
 
-  // Per-produk
   const productData = useMemo(() => {
     const map: Record<string,number> = {}
     transactions.filter(t => t.type==='income' && t.product_name).forEach(t => {
@@ -141,7 +134,6 @@ export default function DashboardPage() {
       .map(([name,total])=>({ name, total, pct: income > 0 ? Math.round((total/income)*100) : 0 }))
   }, [transactions, income])
 
-  // Per metode pembayaran (income only)
   const paymentData = useMemo(() => {
     const cashTotal = transactions
       .filter(t => t.type === 'income' && t.payment_method === 'cash')
@@ -324,7 +316,6 @@ export default function DashboardPage() {
       </div>
 
       {/* ══ DIAGRAM METODE PEMBAYARAN (bar horizontal) ══ */}
-      {/* Desktop/Tab: full width spanning 2 kolom di atas; Mobile: card normal */}
       <div style={{ background:'var(--bg-surface)', border:'1px solid var(--border)', borderRadius:14, padding:20, marginBottom:20 }}>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:2 }}>
           <div style={{ fontSize:14, fontWeight:600, color:'var(--text-primary)' }}>Metode Pembayaran</div>
@@ -340,7 +331,6 @@ export default function DashboardPage() {
           </div>
         ) : (
           <>
-            {/* Bar chart horizontal — explicit height biar muncul di mobile */}
             <div style={{ width:'100%', height:96 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
@@ -367,18 +357,41 @@ export default function DashboardPage() {
                     {paymentData.map((entry, i) => (
                       <Cell key={i} fill={entry.color} />
                     ))}
+                    {/*
+                     * FIX ERROR 1: LabelFormatter type mismatch.
+                     * Recharts LabelFormatter menerima parameter pertama bertipe
+                     * `RenderableText` (string | number), bukan `number` saja.
+                     * Solusi: gunakan `content` render prop sebagai function component
+                     * agar kita kontrol penuh tipe-nya dan bisa panggil formatRupiah
+                     * tanpa konflik dengan signature LabelFormatter bawaan Recharts.
+                     */}
                     <LabelList
                       dataKey="total"
                       position="right"
-                      formatter={(v:number) => formatRupiah(v, true)}
-                      style={{ fontSize:11, fontWeight:600, fill:'var(--text-secondary)' }}
+                      content={(props) => {
+                        const { x, y, width, height, value } = props as {
+                          x?: number; y?: number; width?: number; height?: number; value?: number
+                        }
+                        if (value == null || x == null || y == null || width == null || height == null) return null
+                        return (
+                          <text
+                            x={(x + width + 6)}
+                            y={(y + height / 2)}
+                            dy="0.35em"
+                            fontSize={11}
+                            fontWeight={600}
+                            fill="var(--text-secondary)"
+                          >
+                            {formatRupiah(value, true)}
+                          </text>
+                        )
+                      }}
                     />
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
 
-            {/* Legend bawah bar — rata tengah kiri-kanan */}
             <div style={{ display:'flex', justifyContent:'space-around', marginTop:8 }}>
               {paymentData.map((p) => {
                 const pct = income > 0 ? Math.round((p.total / income) * 100) : 0
@@ -487,7 +500,7 @@ function KpiCard({ icon, bg, label, value, delta, deltaColor, onClick }: {
       onMouseLeave={(e) => { if (onClick) { (e.currentTarget as HTMLDivElement).style.transform = ''; (e.currentTarget as HTMLDivElement).style.boxShadow = '' } }}
     >
       <div style={{ width:32, height:32, borderRadius:9, background:bg, display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, marginBottom:12 }}>{icon}</div>
-      <div style={{ fontSize:18, fontWeight:700, color:'var(--text-primary)', fontFamily:'Nunito,sans-serif', letterSpacing:'-0.3px', marginBottom:2 }}>{value}</div>
+      <div style={{ fontSize:18, fontWeight:700, color:'var(--text-primary)', fontFamily:'Nunito, sans-serif', letterSpacing:'-0.3px', marginBottom:2 }}>{value}</div>
       <div style={{ fontSize:11, color:'var(--text-muted)', marginBottom:4 }}>{label}</div>
       <div style={{ fontSize:11, fontWeight:600, color:deltaColor }}>{delta}</div>
     </div>

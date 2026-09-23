@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, ChevronRight, Search, X, TrendingDown, CalendarDays, TrendingUp, Trophy } from 'lucide-react'
+import { Plus, ChevronRight, Search, X, TrendingDown, CalendarDays, TrendingUp, Trophy, Wallet } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useAppStore } from '@/lib/store/appStore'
 import { formatRupiah, formatDate, toISODate } from '@/lib/utils'
@@ -58,33 +58,28 @@ export default function PengeluaranPage() {
   const [searchQuery,  setSearchQuery]  = useState('')
   const [showSearch,   setShowSearch]   = useState(false)
 
-  // fix bug #3: konsisten dengan ExpenseModal/dashboard/catering — ikut cek offline juga,
-  // bukan cuma cek dummy store.
   const isDummy      = !currentStore || currentStore.id === 'dummy-store-001'
   const isOffline    = typeof navigator !== 'undefined' && !navigator.onLine
   const skipSupabase = isDummy || isOffline
 
-  // ── LOAD ─────────────────────────────────────────────────────────────────
   const load = useCallback(async () => {
     setLoading(true)
     setFetchError('')
 
-    // fix bug #1: sebelumnya baris ini langsung setTxs([]) tanpa pernah baca balik
-    // data yang sudah disimpan ExpenseModal ke pendingSync (mode dummy/offline).
-    // Sekarang baca dari Zustand persist store, jadi data tidak "hilang" saat refresh.
     if (skipSupabase) {
+      const thisMonth = getMonthRange(0)
       const pending = useAppStore.getState().pendingSync
         .filter((p) => p.table === 'expenses' && p.action === 'insert')
         .map((p) => p.payload as unknown as Expense)
+        .filter((t) => t.date >= thisMonth.start && t.date <= thisMonth.end)
         .sort((a, b) => b.created_at.localeCompare(a.created_at))
-
       setTxs(pending)
-      setLastMonthTxs([]) // data bulan lalu memang tidak tersedia saat offline/dummy
+      setLastMonthTxs([])
       setLoading(false)
       return
     }
 
-    if (!currentStore) { setLoading(false); return } // fix bug #4: tetap set loading false
+    if (!currentStore) { setLoading(false); return }
 
     try {
       const supabase = createClient()
@@ -92,29 +87,22 @@ export default function PengeluaranPage() {
       const lastMonth = getMonthRange(-1)
 
       const [{ data: thisData, error: e1 }, { data: lastData }] = await Promise.all([
-        supabase
-          .from('expenses')
-          .select('*')
+        supabase.from('expenses').select('*')
           .eq('store_id', currentStore.id)
-          .gte('date', thisMonth.start)
-          .lte('date', thisMonth.end)
-          .order('date',       { ascending: false })
+          .gte('date', thisMonth.start).lte('date', thisMonth.end)
+          .order('date', { ascending: false })
           .order('created_at', { ascending: false })
           .limit(300),
-        supabase
-          .from('expenses')
-          .select('amount')
+        supabase.from('expenses').select('amount')
           .eq('store_id', currentStore.id)
-          .gte('date', lastMonth.start)
-          .lte('date', lastMonth.end),
+          .gte('date', lastMonth.start).lte('date', lastMonth.end),
       ])
 
       if (e1) throw e1
       setTxs((thisData as Expense[]) ?? [])
       setLastMonthTxs((lastData as Expense[]) ?? [])
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Gagal memuat data'
-      setFetchError(msg)
+      setFetchError(err instanceof Error ? err.message : 'Gagal memuat data')
     } finally {
       setLoading(false)
     }
@@ -122,14 +110,12 @@ export default function PengeluaranPage() {
 
   useEffect(() => { load() }, [load])
 
-  // Optimistic insert → lalu load ulang buat sync
   function handleSaved(tx: Expense) {
     setTxs((prev) => [tx, ...prev])
-    // Load ulang setelah 800ms untuk memastikan data konsisten
     setTimeout(() => load(), 800)
   }
 
-  // ── STATS ────────────────────────────────────────────────────────────────
+  // ── STATS ─────────────────────────────────────────────────────────────────
   const now          = new Date()
   const today        = toISODate()
   const totalMonth   = txs.reduce((s, t) => s + t.amount, 0)
@@ -137,14 +123,11 @@ export default function PengeluaranPage() {
   const txCountToday = txs.filter((t) => t.date === today).length
   const totalLast    = lastMonthTxs.reduce((s, t) => s + t.amount, 0)
   const pctChange    = totalLast > 0 ? Math.round(((totalMonth - totalLast) / totalLast) * 100) : null
-
-  // Transaksi terbesar bulan ini
   const biggestTx    = txs.length > 0 ? txs.reduce((a, b) => a.amount >= b.amount ? a : b) : null
-
   const lastDay      = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
   const rangeLabel   = `1–${lastDay} ${now.toLocaleDateString('id-ID', { month: 'short', year: 'numeric' })}`
 
-  // ── FILTER ───────────────────────────────────────────────────────────────
+  // ── FILTER ────────────────────────────────────────────────────────────────
   const filtered = txs
     .filter((t) => filterCat === 'all' || t.category === filterCat)
     .filter((t) => {
@@ -154,7 +137,7 @@ export default function PengeluaranPage() {
     })
   const grouped = groupByDate(filtered)
 
-  // ── KATEGORI ─────────────────────────────────────────────────────────────
+  // ── KATEGORI ──────────────────────────────────────────────────────────────
   const usedCats    = Array.from(new Set(txs.map((t) => t.category)))
   const storeCats   = expenseCategories.map((c) => c.name)
   const allCatNames = Array.from(new Set([...storeCats, ...usedCats]))
@@ -164,203 +147,224 @@ export default function PengeluaranPage() {
     return { icon: f?.icon ?? '💸', color: f?.color ?? '#DC2626' }
   }
 
-  // ── SUB-COMPONENTS ───────────────────────────────────────────────────────
-  const PctBadge = () => {
-    if (pctChange === null) return null
-    return (
-      <span style={{
-        display: 'inline-flex', alignItems: 'center', gap: 4,
-        background: 'rgba(255,255,255,0.15)',
-        borderRadius: 99, padding: '4px 10px',
-        fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.9)',
-      }}>
-        {pctChange > 0 ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
-        {pctChange > 0 ? '+' : ''}{pctChange}% dari bulan lalu
-      </span>
-    )
-  }
-
-  // ── RENDER ───────────────────────────────────────────────────────────────
   return (
     <>
       <div style={{ background: 'var(--bg-base)', minHeight: '100dvh' }}>
 
         {/* ════════════ DESKTOP ════════════ */}
         <div className="pengeluaran-desktop-layout">
-          <div style={{ maxWidth: 1200, margin: '0 auto', padding: '32px 32px 56px' }}>
+          <div style={{ maxWidth: 1100, margin: '0 auto', padding: '28px 32px 56px' }}>
 
-            {/* Title */}
-            <div style={{ marginBottom: 28 }}>
-              <div style={{
-                display: 'inline-flex', alignItems: 'center', gap: 8,
-                background: 'var(--danger-bg)', borderRadius: 12, padding: '7px 14px', marginBottom: 10,
-              }}>
-                <TrendingDown size={15} color="var(--danger)" />
-                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--danger)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
-                  Pengeluaran
-                </span>
+            {/* ── PAGE HEADER ── */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+              <div>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--danger-bg)', borderRadius: 99, padding: '4px 12px', marginBottom: 8 }}>
+                  <TrendingDown size={12} color="var(--danger)" />
+                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--danger)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Pengeluaran</span>
+                </div>
+                <h1 style={{ margin: '0 0 3px', fontSize: 22, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.3px' }}>
+                  Catat &amp; Pantau Biaya Operasional
+                </h1>
+                <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
+                  Kelola pengeluaran, jaga keuntungan {currentStore?.name ?? 'warung'} Anda.
+                </p>
               </div>
-              <h1 style={{ margin: '0 0 4px', fontSize: 30, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.5px' }}>
-                Catat &amp; Pantau Biaya Operasional
-              </h1>
-              <p style={{ margin: 0, fontSize: 14, color: 'var(--text-muted)' }}>
-                Kelola pengeluaran, jaga keuntungan warung Anda.
-              </p>
+              <button
+                onClick={() => setModalOpen(true)}
+                style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '10px 18px', background: 'var(--accent)', color: 'white', border: 'none', borderRadius: 12, fontSize: 13, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 12px rgba(217,43,43,0.28)', transition: 'transform 0.15s, box-shadow 0.15s', flexShrink: 0 }}
+                onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 6px 16px rgba(217,43,43,0.38)' }}
+                onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(217,43,43,0.28)' }}
+              >
+                <Plus size={15} strokeWidth={2.5} />
+                + Catat Pengeluaran
+              </button>
             </div>
 
+            {/* Error banner */}
             {fetchError && (
-              <div style={{
-                background: '#FEF2F2', border: '1px solid #FECACA',
-                borderRadius: 12, padding: '12px 16px', marginBottom: 20,
-                fontSize: 13, color: '#DC2626', display: 'flex', alignItems: 'center', gap: 8,
-              }}>
+              <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 12, padding: '10px 16px', marginBottom: 20, fontSize: 13, color: '#DC2626', display: 'flex', alignItems: 'center', gap: 8 }}>
                 ⚠️ {fetchError}
-                <button onClick={load} style={{ marginLeft: 'auto', fontSize: 12, color: '#DC2626', fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
-                  Coba lagi
-                </button>
+                <button onClick={load} style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer', color: '#DC2626', textDecoration: 'underline' }}>Coba lagi</button>
               </div>
             )}
 
-            {/* Stats 3 cards */}
-            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 16, marginBottom: 28 }}>
+            {/* ── 4 STAT CARDS ── */}
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 12, marginBottom: 24 }}>
 
               {/* Total bulan ini */}
-              <div style={{ background: 'var(--accent)', borderRadius: 20, padding: '24px', boxShadow: '0 6px 24px rgba(217,43,43,0.22)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-                  <div style={{ width: 34, height: 34, borderRadius: 10, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <TrendingDown size={16} color="white" />
+              <div style={{ background: 'var(--accent)', borderRadius: 16, padding: '18px 20px', boxShadow: '0 4px 16px rgba(217,43,43,0.2)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                  <div style={{ width: 30, height: 30, borderRadius: 9, background: 'rgba(255,255,255,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Wallet size={14} color="white" />
                   </div>
                   <div>
-                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Total Pengeluaran</div>
-                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>Bulan Ini</div>
+                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.65)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.09em' }}>Total Pengeluaran</div>
+                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)' }}>Bulan Ini</div>
                   </div>
                 </div>
-                <div style={{ fontSize: 34, fontWeight: 800, color: 'white', letterSpacing: '-1px', marginBottom: 10 }}>
+                <div style={{ fontSize: 26, fontWeight: 800, color: 'white', letterSpacing: '-0.5px', lineHeight: 1, marginBottom: 8 }}>
                   {loading ? '—' : formatRupiah(totalMonth)}
                 </div>
-                <PctBadge />
+                {pctChange !== null ? (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'rgba(255,255,255,0.15)', borderRadius: 99, padding: '3px 9px', fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>
+                    {pctChange > 0 ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
+                    {pctChange > 0 ? '+' : ''}{pctChange}% dari bulan lalu
+                  </span>
+                ) : (
+                  <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)' }}>{rangeLabel}</span>
+                )}
               </div>
 
               {/* Hari ini */}
-              <div style={{ background: 'var(--bg-surface)', border: '1.5px solid var(--border)', borderRadius: 20, padding: '24px', boxShadow: 'var(--shadow-sm)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 12 }}>
-                  <div style={{ width: 30, height: 30, borderRadius: 9, background: 'var(--danger-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <CalendarDays size={14} color="var(--danger)" />
+              <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 16, padding: '16px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+                  <div style={{ width: 26, height: 26, borderRadius: 7, background: 'var(--danger-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <CalendarDays size={12} color="var(--danger)" />
                   </div>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Hari Ini</span>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>Hari Ini</span>
                 </div>
-                <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--danger)', letterSpacing: '-0.5px', marginBottom: 4 }}>
+                <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--danger)', letterSpacing: '-0.3px', marginBottom: 2 }}>
                   {loading ? '—' : formatRupiah(totalToday)}
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{txCountToday} transaksi</div>
               </div>
 
-              {/* Transaksi terbesar */}
-              <div style={{ background: 'var(--bg-surface)', border: '1.5px solid var(--border)', borderRadius: 20, padding: '24px', boxShadow: 'var(--shadow-sm)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 12 }}>
-                  <div style={{ width: 30, height: 30, borderRadius: 9, background: '#FEF9C3', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Trophy size={14} color="#CA8A04" />
+              {/* Terbesar */}
+              <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 16, padding: '16px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+                  <div style={{ width: 26, height: 26, borderRadius: 7, background: '#FEF9C3', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Trophy size={12} color="#CA8A04" />
                   </div>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Terbesar</span>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>Terbesar</span>
                 </div>
                 {biggestTx ? (
                   <>
-                    <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.5px', marginBottom: 4 }}>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.3px', marginBottom: 2 }}>
                       {formatRupiah(biggestTx.amount)}
                     </div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {biggestTx.category}
-                      {biggestTx.note ? ` · ${biggestTx.note.slice(0, 20)}` : ''}
                     </div>
                   </>
                 ) : (
-                  <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
-                    {loading ? '—' : 'Belum ada transaksi'}
-                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>{loading ? '—' : 'Belum ada'}</div>
                 )}
+              </div>
+
+              {/* Total transaksi */}
+              <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 16, padding: '16px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+                  <div style={{ width: 26, height: 26, borderRadius: 7, background: 'var(--bg-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12 }}>
+                    📋
+                  </div>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>Transaksi</span>
+                </div>
+                <div style={{ fontSize: 26, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.5px', marginBottom: 2 }}>
+                  {txs.length}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{rangeLabel}</div>
               </div>
             </div>
 
-            {/* 2-col layout */}
-            <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 24, alignItems: 'start' }}>
+            {/* ── 2-COL: SIDEBAR + TABEL ── */}
+            <div style={{ display: 'grid', gridTemplateColumns: '230px 1fr', gap: 20, alignItems: 'start' }}>
 
-              {/* Sidebar */}
+              {/* SIDEBAR */}
               <div style={{ position: 'sticky', top: 76 }}>
-                <button
-                  onClick={() => setModalOpen(true)}
-                  style={{
-                    width: '100%', padding: '14px',
-                    background: 'var(--accent)', color: 'white',
-                    border: 'none', borderRadius: 14, fontSize: 14, fontWeight: 700,
-                    cursor: 'pointer', marginBottom: 16,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                    boxShadow: '0 4px 16px rgba(217,43,43,0.28)',
-                    transition: 'transform 0.15s, box-shadow 0.15s',
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 6px 20px rgba(217,43,43,0.36)' }}
-                  onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 16px rgba(217,43,43,0.28)' }}
-                >
-                  <Plus size={17} strokeWidth={2.5} /> + Tambah Pengeluaran
-                </button>
 
-                <div style={{ background: 'var(--bg-surface)', border: '1.5px solid var(--border)', borderRadius: 16, overflow: 'hidden', boxShadow: 'var(--shadow-sm)' }}>
-                  <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                    Filter Kategori
+                {/* Filter kategori dengan breakdown */}
+                <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                  <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Filter Kategori</span>
+                    {filterCat !== 'all' && (
+                      <button onClick={() => setFilterCat('all')} style={{ fontSize: 11, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>Reset</button>
+                    )}
                   </div>
+
                   <button
                     onClick={() => setFilterCat('all')}
                     style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', border: 'none', cursor: 'pointer', background: filterCat === 'all' ? 'var(--accent-subtle)' : 'transparent', borderBottom: '1px solid var(--border)', textAlign: 'left' }}
                   >
-                    <div style={{ width: 28, height: 28, borderRadius: 8, background: filterCat === 'all' ? 'var(--accent)' : 'var(--bg-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13 }}>📊</div>
-                    <span style={{ flex: 1, fontSize: 13, fontWeight: filterCat === 'all' ? 700 : 500, color: filterCat === 'all' ? 'var(--accent)' : 'var(--text-primary)' }}>Semua</span>
+                    <div style={{ width: 26, height: 26, borderRadius: 7, background: filterCat === 'all' ? 'var(--accent)' : 'var(--bg-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12 }}>📊</div>
+                    <span style={{ flex: 1, fontSize: 12, fontWeight: filterCat === 'all' ? 700 : 500, color: filterCat === 'all' ? 'var(--accent)' : 'var(--text-primary)' }}>Semua</span>
                     <span style={{ fontSize: 11, color: 'var(--text-muted)', background: 'var(--bg-elevated)', padding: '1px 7px', borderRadius: 99 }}>{txs.length}</span>
                   </button>
+
+                  {allCatNames.length === 0 && !loading && (
+                    <div style={{ padding: '16px 14px', textAlign: 'center', fontSize: 12, color: 'var(--text-muted)' }}>Belum ada kategori</div>
+                  )}
+
                   {allCatNames.map((name, idx) => {
                     const { icon, color } = getCatMeta(name)
-                    const count    = txs.filter((t) => t.category === name).length
+                    const catTxs   = txs.filter((t) => t.category === name)
+                    const catTotal = catTxs.reduce((s, t) => s + t.amount, 0)
+                    const pct      = totalMonth > 0 ? Math.round((catTotal / totalMonth) * 100) : 0
                     const isActive = filterCat === name
                     const isLast   = idx === allCatNames.length - 1
                     return (
                       <button
                         key={name}
                         onClick={() => setFilterCat(isActive ? 'all' : name)}
-                        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', border: 'none', cursor: 'pointer', background: isActive ? 'var(--accent-subtle)' : 'transparent', borderBottom: isLast ? 'none' : '1px solid var(--border)', textAlign: 'left' }}
+                        style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 5, padding: '10px 14px', border: 'none', cursor: 'pointer', background: isActive ? 'var(--accent-subtle)' : 'transparent', borderBottom: isLast ? 'none' : '1px solid var(--border)', textAlign: 'left' }}
                       >
-                        <div style={{ width: 28, height: 28, borderRadius: 8, background: color + '18', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13 }}>{icon}</div>
-                        <span style={{ flex: 1, fontSize: 13, fontWeight: isActive ? 700 : 500, color: isActive ? 'var(--accent)' : 'var(--text-primary)' }}>{name}</span>
-                        <span style={{ fontSize: 11, color: 'var(--text-muted)', background: 'var(--bg-elevated)', padding: '1px 7px', borderRadius: 99 }}>{count}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                          <div style={{ width: 24, height: 24, borderRadius: 6, background: color + '18', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, flexShrink: 0 }}>{icon}</div>
+                          <span style={{ flex: 1, fontSize: 12, fontWeight: isActive ? 700 : 500, color: isActive ? 'var(--accent)' : 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
+                          <span style={{ fontSize: 10, fontWeight: 700, color: isActive ? 'var(--accent)' : 'var(--text-muted)', flexShrink: 0 }}>{pct}%</span>
+                        </div>
+                        <div style={{ height: 2, background: 'var(--bg-elevated)', borderRadius: 99, overflow: 'hidden', marginLeft: 31 }}>
+                          <div style={{ height: '100%', width: `${pct}%`, background: isActive ? 'var(--accent)' : color, borderRadius: 99 }} />
+                        </div>
+                        <div style={{ fontSize: 10, color: 'var(--text-muted)', marginLeft: 31 }}>{formatRupiah(catTotal)} · {catTxs.length} trx</div>
                       </button>
                     )
                   })}
                 </div>
+
+                {/* Ringkasan */}
+                {txs.length > 0 && (
+                  <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '14px', marginTop: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>Ringkasan</div>
+                    {[
+                      { label: 'Rata-rata/transaksi', value: formatRupiah(Math.round(totalMonth / txs.length)) },
+                      { label: 'Hari ini', value: `${txCountToday} transaksi` },
+                      { label: 'Kategori', value: `${allCatNames.length} aktif` },
+                    ].map(({ label, value }, i, arr) => (
+                      <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: i < arr.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{label}</span>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-primary)' }}>{value}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
-              {/* Right: riwayat */}
+              {/* TABEL RIWAYAT */}
               <div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{ width: 34, height: 34, borderRadius: 10, background: 'var(--danger-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15 }}>📋</div>
-                    <div>
-                      <h2 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: 'var(--text-primary)' }}>Riwayat Pengeluaran</h2>
-                      <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>{filtered.length} transaksi ditampilkan</p>
-                    </div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                  <div>
+                    <h2 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: 'var(--text-primary)' }}>Riwayat Pengeluaran</h2>
+                    <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--text-muted)' }}>
+                      {filterCat === 'all' ? `${filtered.length} transaksi ditampilkan` : `${filterCat} · ${filtered.length} transaksi`}
+                    </p>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                     {showSearch && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--bg-surface)', border: '1.5px solid var(--accent-border)', borderRadius: 12, padding: '8px 14px', width: 220 }}>
-                        <Search size={14} color="var(--text-muted)" />
-                        <input autoFocus placeholder="Cari..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: 13, color: 'var(--text-primary)', flex: 1 }} />
-                        {searchQuery && <button onClick={() => setSearchQuery('')} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0 }}><X size={13} color="var(--text-muted)" /></button>}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 7, background: 'var(--bg-surface)', border: '1.5px solid var(--accent-border)', borderRadius: 10, padding: '7px 12px', width: 200 }}>
+                        <Search size={13} color="var(--text-muted)" />
+                        <input autoFocus placeholder="Cari..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: 12, color: 'var(--text-primary)', flex: 1 }} />
+                        {searchQuery && <button onClick={() => setSearchQuery('')} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0 }}><X size={11} color="var(--text-muted)" /></button>}
                       </div>
                     )}
                     <button
                       onClick={() => { setShowSearch((v) => !v); if (showSearch) setSearchQuery('') }}
-                      style={{ width: 36, height: 36, borderRadius: 10, border: '1.5px solid var(--border)', background: showSearch ? 'var(--accent-subtle)' : 'var(--bg-surface)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      style={{ width: 32, height: 32, borderRadius: 9, border: '1px solid var(--border)', background: showSearch ? 'var(--accent-subtle)' : 'var(--bg-surface)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                     >
-                      {showSearch ? <X size={14} color="var(--accent)" /> : <Search size={14} color="var(--text-muted)" />}
+                      {showSearch ? <X size={13} color="var(--accent)" /> : <Search size={13} color="var(--text-muted)" />}
                     </button>
                   </div>
                 </div>
+
                 <DesktopTable loading={loading} grouped={grouped} getCatMeta={getCatMeta} filterCat={filterCat} onAdd={() => setModalOpen(true)} />
               </div>
             </div>
@@ -399,24 +403,23 @@ export default function PengeluaranPage() {
               </div>
             </div>
 
-            {/* Label */}
             <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.6)', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6 }}>
               Total pengeluaran bulan ini
             </div>
-
-            {/* Nominal */}
             <div style={{ fontSize: 28, fontWeight: 800, color: 'white', letterSpacing: '-0.5px', lineHeight: 1, marginBottom: 10 }}>
               {loading ? '—' : formatRupiah(totalMonth)}
             </div>
-
-            {/* Badge persen */}
-            <PctBadge />
+            {pctChange !== null && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'rgba(255,255,255,0.15)', borderRadius: 99, padding: '4px 10px', fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>
+                {pctChange > 0 ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
+                {pctChange > 0 ? '+' : ''}{pctChange}% dari bulan lalu
+              </span>
+            )}
           </div>
 
           {/* ── STAT CARDS overlap ── */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, padding: '0 16px', marginTop: -16, marginBottom: 18, position: 'relative', zIndex: 1 }}>
 
-            {/* Hari ini */}
             <div style={{ background: 'var(--bg-surface)', borderRadius: 14, padding: '14px', boxShadow: '0 2px 12px rgba(0,0,0,0.09)', border: '0.5px solid rgba(0,0,0,0.06)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
                 <div style={{ width: 26, height: 26, borderRadius: 7, background: 'var(--danger-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -430,7 +433,6 @@ export default function PengeluaranPage() {
               <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{txCountToday} transaksi</div>
             </div>
 
-            {/* Transaksi terbesar */}
             <div style={{ background: 'var(--bg-surface)', borderRadius: 14, padding: '14px', boxShadow: '0 2px 12px rgba(0,0,0,0.09)', border: '0.5px solid rgba(0,0,0,0.06)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
                 <div style={{ width: 26, height: 26, borderRadius: 7, background: '#FEF9C3', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -448,9 +450,7 @@ export default function PengeluaranPage() {
                   </div>
                 </>
               ) : (
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-                  {loading ? '—' : 'Belum ada'}
-                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{loading ? '—' : 'Belum ada'}</div>
               )}
             </div>
           </div>
@@ -458,17 +458,13 @@ export default function PengeluaranPage() {
           {/* ── Konten bawah ── */}
           <div style={{ padding: '0 16px' }}>
 
-            {/* Error state */}
             {fetchError && (
               <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 12, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: '#DC2626', display: 'flex', alignItems: 'center', gap: 8 }}>
                 ⚠️ {fetchError}
-                <button onClick={load} style={{ marginLeft: 'auto', fontSize: 11, color: '#DC2626', fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
-                  Coba lagi
-                </button>
+                <button onClick={load} style={{ marginLeft: 'auto', fontSize: 11, color: '#DC2626', fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>Coba lagi</button>
               </div>
             )}
 
-            {/* Search bar */}
             {showSearch && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--bg-surface)', border: '1.5px solid var(--accent-border)', borderRadius: 12, padding: '10px 14px', marginBottom: 12 }}>
                 <Search size={14} color="var(--text-muted)" />
@@ -477,7 +473,6 @@ export default function PengeluaranPage() {
               </div>
             )}
 
-            {/* Filter chips */}
             {allCatNames.length > 0 && (
               <div style={{ display: 'flex', gap: 7, overflowX: 'auto', paddingBottom: 4, marginBottom: 14, scrollbarWidth: 'none' }}>
                 <button onClick={() => setFilterCat('all')} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 13px', borderRadius: 99, cursor: 'pointer', flexShrink: 0, background: filterCat === 'all' ? 'var(--accent)' : 'var(--bg-surface)', color: filterCat === 'all' ? 'white' : 'var(--text-secondary)', fontWeight: 600, fontSize: 12, border: filterCat === 'all' ? 'none' : '1px solid var(--border)' }}>Semua</button>
@@ -493,7 +488,6 @@ export default function PengeluaranPage() {
               </div>
             )}
 
-            {/* Tombol tambah */}
             <button
               onClick={() => setModalOpen(true)}
               style={{ width: '100%', padding: '13px', background: 'var(--accent)', color: 'white', border: 'none', borderRadius: 13, fontSize: 14, fontWeight: 700, cursor: 'pointer', marginBottom: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, boxShadow: '0 4px 14px rgba(217,43,43,0.28)' }}
@@ -502,7 +496,6 @@ export default function PengeluaranPage() {
               Tambah pengeluaran
             </button>
 
-            {/* Riwayat header */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
               <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>Riwayat pengeluaran</span>
               {filtered.length > 0 && (
@@ -512,7 +505,6 @@ export default function PengeluaranPage() {
               )}
             </div>
 
-            {/* List */}
             {loading ? <LoadingState /> : grouped.length === 0 ? (
               <EmptyState filterCat={filterCat} onAdd={() => setModalOpen(true)} hasSearch={!!searchQuery} onClearSearch={() => setSearchQuery('')} />
             ) : (
@@ -566,15 +558,12 @@ export default function PengeluaranPage() {
       <ExpenseModal open={modalOpen} onClose={() => setModalOpen(false)} onSaved={handleSaved} />
 
       <style>{`
-        /* ── Layout switch ── */
         .pengeluaran-desktop-layout { display: none !important; }
         .pengeluaran-mobile-layout  { display: block !important; }
         @media (min-width: 768px) {
           .pengeluaran-desktop-layout { display: block !important; }
           .pengeluaran-mobile-layout  { display: none !important; }
         }
-
-        /* ── Hero full-bleed: keluar dari semua parent padding ── */
         @media (max-width: 767px) {
           .pengeluaran-mobile-layout {
             padding-left: 0 !important;
@@ -582,7 +571,6 @@ export default function PengeluaranPage() {
             padding-top: 0 !important;
           }
           .pengeluaran-hero {
-            /* Kalau parent punya padding, ini override supaya hero tetap full width */
             margin-left: calc(-1 * var(--layout-padding-x, 0px));
             margin-right: calc(-1 * var(--layout-padding-x, 0px));
           }
@@ -592,7 +580,7 @@ export default function PengeluaranPage() {
   )
 }
 
-// ─── DESKTOP TABLE ──────────────────────────────────────────────────────────
+// ─── DESKTOP TABLE ───────────────────────────────────────────────────────────
 
 function DesktopTable({ loading, grouped, getCatMeta, filterCat, onAdd }: {
   loading: boolean
@@ -604,16 +592,16 @@ function DesktopTable({ loading, grouped, getCatMeta, filterCat, onAdd }: {
   if (loading) return <LoadingState />
   if (grouped.length === 0) {
     return (
-      <div style={{ textAlign: 'center', padding: '72px 32px', background: 'var(--bg-surface)', border: '1.5px dashed var(--border-strong)', borderRadius: 18 }}>
-        <div style={{ fontSize: 44, marginBottom: 12 }}>💸</div>
-        <p style={{ color: 'var(--text-primary)', fontWeight: 700, fontSize: 16, margin: '0 0 6px' }}>
+      <div style={{ textAlign: 'center', padding: '60px 32px', background: 'var(--bg-surface)', border: '1.5px dashed var(--border-strong)', borderRadius: 16 }}>
+        <div style={{ fontSize: 40, marginBottom: 10 }}>💸</div>
+        <p style={{ color: 'var(--text-primary)', fontWeight: 700, fontSize: 15, margin: '0 0 6px' }}>
           {filterCat === 'all' ? 'Belum ada pengeluaran' : `Tidak ada pengeluaran "${filterCat}"`}
         </p>
-        <p style={{ color: 'var(--text-muted)', fontSize: 14, margin: '0 0 20px' }}>
+        <p style={{ color: 'var(--text-muted)', fontSize: 13, margin: '0 0 18px' }}>
           {filterCat === 'all' ? 'Catat pengeluaran pertama untuk mulai memantau biaya operasional warung.' : 'Coba pilih kategori lain.'}
         </p>
         {filterCat === 'all' && (
-          <button onClick={onAdd} style={{ background: 'var(--accent)', color: 'white', border: 'none', borderRadius: 12, padding: '11px 24px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+          <button onClick={onAdd} style={{ background: 'var(--accent)', color: 'white', border: 'none', borderRadius: 11, padding: '10px 22px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
             + Catat Pengeluaran
           </button>
         )}
@@ -622,43 +610,44 @@ function DesktopTable({ loading, grouped, getCatMeta, filterCat, onAdd }: {
   }
 
   return (
-    <div style={{ background: 'var(--bg-surface)', border: '1.5px solid var(--border)', borderRadius: 18, overflow: 'hidden', boxShadow: 'var(--shadow-sm)' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 160px', padding: '12px 18px', background: 'var(--bg-elevated)', borderBottom: '1.5px solid var(--border)' }}>
+    <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '110px 1fr 150px', padding: '11px 16px', background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)' }}>
         {['Tanggal', 'Keterangan / Kategori', 'Jumlah'].map((col, i) => (
-          <div key={i} style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', textAlign: i === 2 ? 'right' : 'left' }}>{col}</div>
+          <div key={i} style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', textAlign: i === 2 ? 'right' : 'left' }}>{col}</div>
         ))}
       </div>
       {grouped.map(({ date, items }) => (
         <div key={date}>
-          <div style={{ padding: '8px 18px', background: 'var(--bg-muted)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: isToday(date) ? 'var(--danger)' : 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', display: 'flex', alignItems: 'center', gap: 5 }}>
-              {isToday(date) && <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: 'var(--danger)', animation: 'pulseDot 1.5s infinite' }} />}
+          <div style={{ padding: '7px 16px', background: 'var(--bg-muted)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: isToday(date) ? 'var(--danger)' : 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', display: 'flex', alignItems: 'center', gap: 5 }}>
+              {isToday(date) && <span style={{ display: 'inline-block', width: 5, height: 5, borderRadius: '50%', background: 'var(--danger)' }} />}
               {getDayLabel(date)}
             </span>
-            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--danger)' }}>-{formatRupiah(items.reduce((s, t) => s + t.amount, 0))}</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--danger)' }}>-{formatRupiah(items.reduce((s, t) => s + t.amount, 0))}</span>
           </div>
           {items.map((tx, i) => {
             const { icon, color } = getCatMeta(tx.category)
             const isLast = i === items.length - 1
             return (
-              <div key={tx.id}
-                style={{ display: 'grid', gridTemplateColumns: '120px 1fr 160px', padding: '13px 18px', borderBottom: isLast ? '1.5px solid var(--border)' : '1px solid var(--border)', alignItems: 'center', transition: 'background 0.12s', cursor: 'default' }}
+              <div
+                key={tx.id}
+                style={{ display: 'grid', gridTemplateColumns: '110px 1fr 150px', padding: '12px 16px', borderBottom: isLast ? 'none' : '1px solid var(--border)', alignItems: 'center', transition: 'background 0.1s', cursor: 'default' }}
                 onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-muted)' }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
               >
                 <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{formatDate(tx.date, 'short')}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{new Date(tx.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{formatDate(tx.date, 'short')}</div>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{new Date(tx.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div style={{ width: 32, height: 32, borderRadius: 9, background: color + '15', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15 }}>{icon}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                  <div style={{ width: 30, height: 30, borderRadius: 8, background: color + '15', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>{icon}</div>
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tx.note || tx.category}</div>
-                    <span style={{ fontSize: 11, fontWeight: 500, color, background: color + '12', padding: '1px 7px', borderRadius: 99, display: 'inline-block' }}>{tx.category}</span>
+                    <span style={{ fontSize: 10, fontWeight: 500, color, background: color + '12', padding: '1px 6px', borderRadius: 99, display: 'inline-block' }}>{tx.category}</span>
                   </div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                  <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--danger)', letterSpacing: '-0.3px' }}>-{formatRupiah(tx.amount)}</span>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--danger)', letterSpacing: '-0.3px' }}>-{formatRupiah(tx.amount)}</span>
                 </div>
               </div>
             )
@@ -669,51 +658,51 @@ function DesktopTable({ loading, grouped, getCatMeta, filterCat, onAdd }: {
   )
 }
 
-// ─── LOADING ────────────────────────────────────────────────────────────────
+// ─── LOADING ─────────────────────────────────────────────────────────────────
 
 function LoadingState() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       {[1, 2, 3].map((n) => (
-        <div key={n} style={{ background: 'var(--bg-surface)', border: '0.5px solid rgba(0,0,0,0.06)', borderRadius: 14, padding: '13px', display: 'flex', alignItems: 'center', gap: 11 }}>
-          <div style={{ width: 38, height: 38, borderRadius: 11, flexShrink: 0, background: 'var(--bg-elevated)', opacity: 0.5 }} />
+        <div key={n} style={{ background: 'var(--bg-surface)', border: '0.5px solid rgba(0,0,0,0.06)', borderRadius: 12, padding: '13px', display: 'flex', alignItems: 'center', gap: 11 }}>
+          <div style={{ width: 36, height: 36, borderRadius: 10, flexShrink: 0, background: 'var(--bg-elevated)', opacity: 0.5 }} />
           <div style={{ flex: 1 }}>
-            <div style={{ height: 12, width: '55%', borderRadius: 6, background: 'var(--bg-elevated)', marginBottom: 7, opacity: 0.5 }} />
-            <div style={{ height: 10, width: '38%', borderRadius: 5, background: 'var(--bg-elevated)', opacity: 0.5 }} />
+            <div style={{ height: 11, width: '55%', borderRadius: 5, background: 'var(--bg-elevated)', marginBottom: 7, opacity: 0.5 }} />
+            <div style={{ height: 9, width: '38%', borderRadius: 4, background: 'var(--bg-elevated)', opacity: 0.5 }} />
           </div>
-          <div style={{ height: 13, width: 75, borderRadius: 6, background: 'var(--bg-elevated)', opacity: 0.5 }} />
+          <div style={{ height: 12, width: 70, borderRadius: 5, background: 'var(--bg-elevated)', opacity: 0.5 }} />
         </div>
       ))}
     </div>
   )
 }
 
-// ─── EMPTY ──────────────────────────────────────────────────────────────────
+// ─── EMPTY ───────────────────────────────────────────────────────────────────
 
 function EmptyState({ filterCat, onAdd, hasSearch, onClearSearch }: { filterCat: string; onAdd: () => void; hasSearch: boolean; onClearSearch: () => void }) {
   if (hasSearch) {
     return (
-      <div style={{ textAlign: 'center', padding: '40px 20px', background: 'var(--bg-surface)', border: '1.5px dashed var(--border-strong)', borderRadius: 16 }}>
-        <div style={{ fontSize: 36, marginBottom: 10 }}>🔍</div>
-        <p style={{ color: 'var(--text-primary)', fontWeight: 700, fontSize: 14, margin: '0 0 4px' }}>Tidak ada hasil</p>
+      <div style={{ textAlign: 'center', padding: '40px 20px', background: 'var(--bg-surface)', border: '1.5px dashed var(--border-strong)', borderRadius: 14 }}>
+        <div style={{ fontSize: 34, marginBottom: 10 }}>🔍</div>
+        <p style={{ color: 'var(--text-primary)', fontWeight: 700, fontSize: 13, margin: '0 0 4px' }}>Tidak ada hasil</p>
         <p style={{ color: 'var(--text-muted)', fontSize: 12, margin: '0 0 14px' }}>Coba kata kunci yang berbeda</p>
-        <button onClick={onClearSearch} style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)', border: '1.5px solid var(--border)', borderRadius: 10, padding: '8px 16px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+        <button onClick={onClearSearch} style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)', border: '1.5px solid var(--border)', borderRadius: 9, padding: '7px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
           Hapus Pencarian
         </button>
       </div>
     )
   }
   return (
-    <div style={{ textAlign: 'center', padding: '40px 20px', background: 'var(--bg-surface)', border: '1.5px dashed var(--border-strong)', borderRadius: 16 }}>
-      <div style={{ width: 60, height: 60, borderRadius: 18, background: 'var(--danger-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, margin: '0 auto 12px' }}>💸</div>
-      <p style={{ color: 'var(--text-primary)', fontWeight: 700, fontSize: 14, margin: '0 0 4px' }}>
+    <div style={{ textAlign: 'center', padding: '40px 20px', background: 'var(--bg-surface)', border: '1.5px dashed var(--border-strong)', borderRadius: 14 }}>
+      <div style={{ width: 56, height: 56, borderRadius: 16, background: 'var(--danger-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, margin: '0 auto 12px' }}>💸</div>
+      <p style={{ color: 'var(--text-primary)', fontWeight: 700, fontSize: 13, margin: '0 0 4px' }}>
         {filterCat === 'all' ? 'Belum ada pengeluaran' : `Tidak ada data "${filterCat}"`}
       </p>
       <p style={{ color: 'var(--text-muted)', fontSize: 12, margin: '0 0 16px', lineHeight: 1.5 }}>
         {filterCat === 'all' ? 'Catat pengeluaran pertama untuk mulai memantau biaya operasional.' : 'Coba pilih kategori lain.'}
       </p>
       {filterCat === 'all' && (
-        <button onClick={onAdd} style={{ background: 'var(--accent)', color: 'white', border: 'none', borderRadius: 11, padding: '10px 20px', fontSize: 13, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 12px rgba(217,43,43,0.22)' }}>
+        <button onClick={onAdd} style={{ background: 'var(--accent)', color: 'white', border: 'none', borderRadius: 10, padding: '9px 18px', fontSize: 13, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 12px rgba(217,43,43,0.22)' }}>
           + Catat Pengeluaran Pertama
         </button>
       )}

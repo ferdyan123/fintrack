@@ -3,6 +3,7 @@
 import { useState, useMemo, useCallback, useEffect } from 'react'
 import { useAppStore } from '@/lib/store/appStore'
 import { createClient } from '@/lib/supabase/client'
+import { useToast } from '@/components/shared/Toast'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -72,7 +73,15 @@ const LS_KEY = 'fintrack_catering_orders'
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
-const fmt   = (n: number) => 'Rp\u00A0' + n.toLocaleString('id-ID')
+/*
+ * FIX ERROR 4b: TypeError — Cannot read properties of undefined (reading 'toLocaleString')
+ * fmt dipanggil dengan nilai `undefined` dari field order yang belum terisi
+ * (misalnya order baru yang remaining-nya belum dihitung, atau data dari Supabase
+ * yang kolom-nya null). Guard dengan `(n ?? 0)` agar tidak crash.
+ */
+const fmt = (n: number | undefined | null) =>
+  'Rp\u00A0' + (n ?? 0).toLocaleString('id-ID')
+
 const today = new Date().toISOString().split('T')[0]
 
 function fmtDate(d: string) {
@@ -112,6 +121,34 @@ function lsSet(key: string, val: unknown) {
   try { localStorage.setItem(key, JSON.stringify(val)) } catch {}
 }
 
+// ─── Supabase row <-> local shape mapping ──────────────────────────────────────
+function rowToOrder(row: any): CateringOrder {
+  return {
+    id: row.id,
+    store_id: row.store_id,
+    customer_name: row.customer_name,
+    customer_wa: row.customer_phone ?? '',
+    customer_institution: row.customer_org ?? undefined,
+    event_date: row.event_date,
+    event_time: row.event_time ?? undefined,
+    location: row.delivery_address ?? '',
+    items: (row.catering_order_items ?? []).map((it: any) => ({
+      product_id: it.package_id ?? undefined,
+      name: it.item_name,
+      qty: it.qty,
+      unit_price: it.unit_price,
+      subtotal: it.subtotal,
+    })),
+    total: row.total_amount,
+    dp_amount: row.dp_amount,
+    remaining: row.remaining_amount,
+    status: row.status,
+    payment_method: row.payment_method ?? undefined,
+    notes: row.notes ?? undefined,
+    created_at: row.created_at,
+  }
+}
+
 // ─── Shared UI ─────────────────────────────────────────────────────────────────
 
 function StatusBadge({ status, small }: { status: OrderStatus; small?: boolean }) {
@@ -142,16 +179,22 @@ function UrgencyChip({ order }: { order: CateringOrder }) {
 }
 
 const iStyle: React.CSSProperties = {
-  width: '100%', padding: '10px 13px', borderRadius: 8, fontSize: 14,
+  width: '100%', padding: '9px 12px', borderRadius: 8, fontSize: 13,
   border: '1px solid var(--border)', background: 'var(--bg-base)',
   color: 'var(--text-primary)', outline: 'none', boxSizing: 'border-box',
   fontFamily: 'inherit',
 }
 const lStyle: React.CSSProperties = {
-  display: 'block', fontSize: 12, fontWeight: 600,
-  color: 'var(--text-muted)', marginBottom: 5, letterSpacing: '0.02em',
+  display: 'block', fontSize: 11, fontWeight: 600,
+  color: 'var(--text-muted)', marginBottom: 4, letterSpacing: '0.02em',
 }
 const errStyle: React.CSSProperties = { fontSize: 11, color: '#DC2626', marginTop: 3 }
+const qtyBtnStyle: React.CSSProperties = {
+  width: 28, height: 34, borderRadius: 7, border: '1px solid #E5E7EB',
+  background: '#fff', color: 'var(--text-primary)',
+  fontSize: 14, fontWeight: 700, cursor: 'pointer', flexShrink: 0,
+  display: 'flex', alignItems: 'center', justifyContent: 'center',
+}
 
 // ─── Empty State ───────────────────────────────────────────────────────────────
 
@@ -245,7 +288,7 @@ function OrderCard({ order, onClick }: { order: CateringOrder; onClick: () => vo
         {[
           { label: 'Total', value: fmt(order.total),     color: '#111' },
           { label: 'DP',    value: fmt(order.dp_amount), color: '#16A34A' },
-          { label: 'Sisa',  value: fmt(order.remaining), color: order.remaining > 0 ? '#C0392B' : '#16A34A' },
+          { label: 'Sisa',  value: fmt(order.remaining), color: (order.remaining ?? 0) > 0 ? '#C0392B' : '#16A34A' },
         ].map((col, i) => (
           <div key={i} style={{ padding: '10px 14px', borderRight: i < 2 ? '1px solid #F5F5F5' : 'none' }}>
             <p style={{ margin: '0 0 3px', fontSize: 10, fontWeight: 700, color: '#ABABAB', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
@@ -302,7 +345,7 @@ function KanbanView({ orders, onCardClick }: { orders: CateringOrder[]; onCardCl
                   <span style={{ fontSize: 11, color: '#ABABAB' }}>📅 {fmtDateShort(o.event_date)}</span>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, paddingTop: 8, borderTop: '1px solid #F3F4F6' }}>
                     <span style={{ fontSize: 10, color: '#ABABAB' }}>Sisa</span>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: o.remaining > 0 ? '#DC2626' : '#15803D' }}>{fmt(o.remaining)}</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: (o.remaining ?? 0) > 0 ? '#DC2626' : '#15803D' }}>{fmt(o.remaining)}</span>
                   </div>
                 </div>
               ))}
@@ -369,7 +412,7 @@ function TimelineView({ orders, onCardClick }: { orders: CateringOrder[]; onCard
                       <div style={{ fontSize: 12, color: '#ABABAB', marginTop: 6 }}>📍 {o.location}{o.event_time ? ` · ${o.event_time}` : ''}</div>
                       <div style={{ display: 'flex', gap: 12, marginTop: 8, paddingTop: 8, borderTop: '1px solid #F9FAFB', fontSize: 12 }}>
                         <span style={{ color: '#ABABAB' }}>Total <strong style={{ color: '#111' }}>{fmt(o.total)}</strong></span>
-                        <span style={{ color: '#ABABAB' }}>Sisa <strong style={{ color: o.remaining > 0 ? '#DC2626' : '#15803D' }}>{fmt(o.remaining)}</strong></span>
+                        <span style={{ color: '#ABABAB' }}>Sisa <strong style={{ color: (o.remaining ?? 0) > 0 ? '#DC2626' : '#15803D' }}>{fmt(o.remaining)}</strong></span>
                       </div>
                     </div>
                   </div>
@@ -404,10 +447,10 @@ function EditOrderModal({ order, onClose, onSave }: {
     event_date:          order.event_date,
     event_time:          order.event_time ?? '',
     location:            order.location,
-    total_str:           order.total.toLocaleString('id-ID'),
-    dp_str:              order.dp_amount.toLocaleString('id-ID'),
+    total_str:           (order.total ?? 0).toLocaleString('id-ID'),
+    dp_str:              (order.dp_amount ?? 0).toLocaleString('id-ID'),
     status:              order.status,
-    payment_method:      (order.payment_method === 'transfer' ? 'cash' : order.payment_method) ?? 'cash',
+    payment_method:      ((order.payment_method as string) === 'transfer' ? 'cash' : order.payment_method) ?? 'cash',
     notes:               order.notes ?? '',
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -481,7 +524,6 @@ function EditOrderModal({ order, onClose, onSave }: {
         <div style={{ flex: 1, overflowY: 'auto', padding: '0 20px' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingBottom: 8 }}>
 
-            {/* Pemesan */}
             <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: '#ABABAB', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Pemesan</p>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
@@ -529,7 +571,6 @@ function EditOrderModal({ order, onClose, onSave }: {
             <div style={{ height: 1, background: '#F3F4F6' }} />
             <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: '#ABABAB', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Pembayaran</p>
 
-            {/* Status */}
             <div>
               <label style={lStyle}>Status</label>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
@@ -545,7 +586,6 @@ function EditOrderModal({ order, onClose, onSave }: {
               </div>
             </div>
 
-            {/* Metode bayar */}
             <div>
               <label style={lStyle}>Metode Pembayaran</label>
               <div style={{ display: 'flex', gap: 8 }}>
@@ -578,7 +618,6 @@ function EditOrderModal({ order, onClose, onSave }: {
               </div>
             </div>
 
-            {/* Preview sisa */}
             <div style={{ background: '#F9FAFB', borderRadius: 10, padding: '12px 14px', display: 'flex', justifyContent: 'space-between' }}>
               <span style={{ fontSize: 13, color: '#ABABAB' }}>Sisa Bayar</span>
               <span style={{ fontSize: 14, fontWeight: 800, color: remaining > 0 ? '#C0392B' : '#15803D' }}>{fmt(remaining)}</span>
@@ -703,7 +742,7 @@ function DetailSheet({ order, onClose, onStatusChange, onEdit }: {
             {[
               { label: 'Total Tagihan', value: fmt(order.total),     color: '#111',     bold: true, big: true },
               { label: 'DP Dibayar',   value: fmt(order.dp_amount), color: '#15803D' },
-              { label: 'Sisa Bayar',   value: fmt(order.remaining), color: order.remaining > 0 ? '#DC2626' : '#15803D', bold: true },
+              { label: 'Sisa Bayar',   value: fmt(order.remaining), color: (order.remaining ?? 0) > 0 ? '#DC2626' : '#15803D', bold: true },
             ].map((row, i) => (
               <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: i < 2 ? 8 : 0, paddingBottom: i === 0 ? 8 : 0, borderBottom: i === 0 ? '1px solid #E5E7EB' : 'none' }}>
                 <span style={{ fontSize: 13, color: '#ABABAB' }}>{row.label}</span>
@@ -820,7 +859,7 @@ function AddOrderModal({ onClose, onSave }: {
       customer_institution: form.customer_institution.trim() || undefined,
       event_date: form.event_date, event_time: form.event_time || undefined,
       location: form.location.trim(), items: form.items, total, dp_amount: dpNum,
-      status: 'belum_dp', payment_method: form.payment_method,
+      status: dpNum > 0 ? 'sudah_dp' : 'belum_dp', payment_method: form.payment_method,
       notes: form.notes.trim() || undefined,
     })
   }
@@ -829,21 +868,21 @@ function AddOrderModal({ onClose, onSave }: {
 
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-      <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 560, background: '#fff', borderRadius: '18px 18px 0 0', maxHeight: '94vh', display: 'flex', flexDirection: 'column', boxShadow: '0 -4px 24px rgba(0,0,0,0.12)' }}>
-        <div style={{ padding: '12px 20px 0', flexShrink: 0 }}>
-          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
-            <div style={{ width: 36, height: 4, borderRadius: 99, background: '#E5E7EB' }} />
+      <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 480, background: '#fff', borderRadius: '16px 16px 0 0', maxHeight: '92vh', display: 'flex', flexDirection: 'column', boxShadow: '0 -4px 24px rgba(0,0,0,0.12)' }}>
+        <div style={{ padding: '10px 16px 0', flexShrink: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
+            <div style={{ width: 32, height: 4, borderRadius: 99, background: '#E5E7EB' }} />
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-            <h2 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#111' }}>Order Catering Baru</h2>
-            <button onClick={onClose} style={{ background: '#F3F4F6', border: 'none', borderRadius: 99, width: 28, height: 28, cursor: 'pointer', fontSize: 16, color: '#6B7280', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <h2 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: '#111' }}>Order Catering Baru</h2>
+            <button onClick={onClose} style={{ background: '#F3F4F6', border: 'none', borderRadius: 99, width: 26, height: 26, cursor: 'pointer', fontSize: 15, color: '#6B7280', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
           </div>
-          <div style={{ display: 'flex', gap: 0, marginBottom: 16, borderRadius: 8, overflow: 'hidden', border: '1px solid #E5E7EB' }}>
+          <div style={{ display: 'flex', gap: 0, marginBottom: 12, borderRadius: 8, overflow: 'hidden', border: '1px solid #E5E7EB' }}>
             {STEPS.map((label, i) => {
               const s = (i + 1) as 1 | 2 | 3; const active = step === s; const done = step > s
               return (
                 <button key={label} onClick={() => setStep(s)} style={{
-                  flex: 1, padding: '9px 4px', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600,
+                  flex: 1, padding: '7px 4px', border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 600,
                   background: active ? 'var(--accent)' : done ? '#FEF2F2' : '#fff',
                   color: active ? '#fff' : done ? 'var(--accent)' : '#9CA3AF',
                   borderRight: i < 2 ? '1px solid #E5E7EB' : 'none', transition: 'all 0.15s',
@@ -853,10 +892,10 @@ function AddOrderModal({ onClose, onSave }: {
           </div>
         </div>
 
-        <div style={{ flex: 1, overflowY: 'auto', padding: '0 20px' }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '0 16px' }}>
           {/* Step 1 */}
           {step === 1 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingBottom: 8 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingBottom: 6 }}>
               <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: '#ABABAB', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Data Pemesan</p>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <div style={{ gridColumn: '1/-1' }}>
@@ -897,7 +936,7 @@ function AddOrderModal({ onClose, onSave }: {
 
           {/* Step 2 */}
           {step === 2 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingBottom: 8 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingBottom: 6 }}>
               <div style={{ display: 'flex', background: '#F3F4F6', borderRadius: 8, padding: 3, gap: 3 }}>
                 {(['product', 'custom'] as const).map(m => (
                   <button key={m} onClick={() => setItemMode(m)} style={{ flex: 1, padding: '7px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, background: itemMode === m ? '#fff' : 'transparent', color: itemMode === m ? '#111' : '#9CA3AF', boxShadow: itemMode === m ? '0 1px 3px rgba(0,0,0,0.08)' : 'none', transition: 'all 0.15s' }}>
@@ -905,7 +944,7 @@ function AddOrderModal({ onClose, onSave }: {
                   </button>
                 ))}
               </div>
-              <div style={{ background: '#F9FAFB', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ background: '#F9FAFB', borderRadius: 10, padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {itemMode === 'product' ? (
                   <div>
                     <label style={lStyle}>Pilih Produk</label>
@@ -920,10 +959,14 @@ function AddOrderModal({ onClose, onSave }: {
                     <input style={iStyle} placeholder="Nasi Box Ayam Bakar..." value={itemName} onChange={e => setItemName(e.target.value)} />
                   </div>
                 )}
-                <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr', gap: 8 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '128px 1fr', gap: 8 }}>
                   <div>
                     <label style={lStyle}>Qty</label>
-                    <input style={iStyle} inputMode="numeric" value={itemQty} onChange={e => setItemQty(e.target.value.replace(/\D/g, '') || '1')} />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <button onClick={() => setItemQty(String(Math.max(1, (parseInt(itemQty) || 1) - 1)))} style={qtyBtnStyle}>−</button>
+                      <input style={{ ...iStyle, textAlign: 'center', padding: '9px 4px' }} inputMode="numeric" value={itemQty} onChange={e => setItemQty(e.target.value.replace(/\D/g, ''))} />
+                      <button onClick={() => setItemQty(String((parseInt(itemQty) || 0) + 1))} style={qtyBtnStyle}>+</button>
+                    </div>
                   </div>
                   <div>
                     <label style={lStyle}>Harga / item</label>
@@ -935,15 +978,17 @@ function AddOrderModal({ onClose, onSave }: {
               {errors.items && form.items.length === 0 && <p style={{ ...errStyle, margin: 0 }}>{errors.items}</p>}
               {form.items.length > 0 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {form.items.map((item, i) => (
-                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 12px', background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8 }}>
-                      <div>
-                        <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#111' }}>{item.name}</p>
-                        <p style={{ margin: 0, fontSize: 12, color: '#ABABAB' }}>{item.qty} × {fmt(item.unit_price)} = <strong>{fmt(item.subtotal)}</strong></p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 168, overflowY: 'auto', paddingRight: 2 }}>
+                    {form.items.map((item, i) => (
+                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 12px', background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8, flexShrink: 0 }}>
+                        <div>
+                          <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#111' }}>{item.name}</p>
+                          <p style={{ margin: 0, fontSize: 12, color: '#ABABAB' }}>{item.qty} × {fmt(item.unit_price)} = <strong>{fmt(item.subtotal)}</strong></p>
+                        </div>
+                        <button onClick={() => removeItem(i)} style={{ background: '#FEF2F2', border: 'none', borderRadius: 6, color: '#DC2626', width: 26, height: 26, cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>×</button>
                       </div>
-                      <button onClick={() => removeItem(i)} style={{ background: '#FEF2F2', border: 'none', borderRadius: 6, color: '#DC2626', width: 26, height: 26, cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>×</button>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 12px', background: '#FEF2F2', borderRadius: 8, border: '1px solid #FECACA' }}>
                     <span style={{ fontSize: 14, fontWeight: 600, color: '#111' }}>Total</span>
                     <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--accent)' }}>{fmt(total)}</span>
@@ -955,7 +1000,7 @@ function AddOrderModal({ onClose, onSave }: {
 
           {/* Step 3 */}
           {step === 3 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingBottom: 8 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingBottom: 6 }}>
               <div style={{ background: '#F9FAFB', borderRadius: 10, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: 13, color: '#ABABAB' }}>Total ({form.items.length} item)</span>
                 <span style={{ fontSize: 18, fontWeight: 800, color: 'var(--accent)' }}>{fmt(total)}</span>
@@ -983,14 +1028,14 @@ function AddOrderModal({ onClose, onSave }: {
           )}
         </div>
 
-        <div style={{ padding: '14px 20px 28px', borderTop: '1px solid #F3F4F6', flexShrink: 0, display: 'flex', gap: 8 }}>
+        <div style={{ padding: '12px 16px 22px', borderTop: '1px solid #F3F4F6', flexShrink: 0, display: 'flex', gap: 8 }}>
           {step > 1 && (
-            <button onClick={() => setStep(s => (s - 1) as 1|2|3)} style={{ flex: 1, padding: '13px', borderRadius: 10, border: '1px solid #E5E7EB', background: '#fff', color: '#888', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>← Kembali</button>
+            <button onClick={() => setStep(s => (s - 1) as 1|2|3)} style={{ flex: 1, padding: '11px', borderRadius: 10, border: '1px solid #E5E7EB', background: '#fff', color: '#888', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>← Kembali</button>
           )}
           {step < 3 ? (
-            <button onClick={() => setStep(s => (s + 1) as 1|2|3)} style={{ flex: 2, padding: '13px', borderRadius: 10, border: 'none', background: 'var(--accent)', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>Lanjut →</button>
+            <button onClick={() => setStep(s => (s + 1) as 1|2|3)} style={{ flex: 2, padding: '11px', borderRadius: 10, border: 'none', background: 'var(--accent)', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>Lanjut →</button>
           ) : (
-            <button onClick={handleSave} style={{ flex: 2, padding: '13px', borderRadius: 10, border: 'none', background: 'var(--accent)', color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>Simpan Order</button>
+            <button onClick={handleSave} style={{ flex: 2, padding: '11px', borderRadius: 10, border: 'none', background: 'var(--accent)', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>Simpan Order</button>
           )}
         </div>
       </div>
@@ -1002,6 +1047,7 @@ function AddOrderModal({ onClose, onSave }: {
 
 export default function CateringPage() {
   const currentStore = useAppStore((s) => s.currentStore)
+  const { toast } = useToast()
   const [orders,      setOrders]      = useState<CateringOrder[]>([])
   const [loading,     setLoading]     = useState(true)
   const [filter,      setFilter]      = useState<FilterTab>('semua')
@@ -1010,6 +1056,30 @@ export default function CateringPage() {
   const [detailOrder, setDetailOrder] = useState<CateringOrder | null>(null)
   const [editOrder,   setEditOrder]   = useState<CateringOrder | null>(null)
 
+  /*
+   * FIX ERROR 4a: Hydration mismatch
+   * `navigator.onLine` hanya tersedia di browser (client-side). Jika dipanggil
+   * langsung saat render (di luar useEffect), nilai-nya berbeda antara server
+   * (undefined → false) dan client (true/false) — React mendeteksi mismatch
+   * dan throw hydration error.
+   *
+   * Solusi: simpan nilai isOnline ke state, inisialisasi di useEffect (client only).
+   * Default `true` agar server render tidak salah asumsikan offline, lalu dikoreksi
+   * oleh useEffect di client sebelum render pertama yang signifikan.
+   */
+  const [isOnline, setIsOnline] = useState(true)
+  useEffect(() => {
+    setIsOnline(navigator.onLine)
+    const handleOnline  = () => setIsOnline(true)
+    const handleOffline = () => setIsOnline(false)
+    window.addEventListener('online',  handleOnline)
+    window.addEventListener('offline', handleOffline)
+    return () => {
+      window.removeEventListener('online',  handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
+
   const isDummy  = !currentStore || currentStore.id === 'dummy-store-001'
   const supabase = createClient()
 
@@ -1017,21 +1087,26 @@ export default function CateringPage() {
   useEffect(() => {
     async function load() {
       setLoading(true)
-      if (isDummy || !navigator.onLine) {
+      if (isDummy || !isOnline) {
         const saved = lsGet(LS_KEY) as CateringOrder[] | null
         setOrders(Array.isArray(saved) ? saved : [])
         setLoading(false); return
       }
-      const { data } = await supabase
-        .from('catering_orders').select('*')
+      const { data, error } = await supabase
+        .from('catering_orders')
+        .select('*, catering_order_items(*)')
         .eq('store_id', currentStore!.id)
         .order('event_date', { ascending: true })
-      setOrders(data ?? [])
+      if (error) {
+        toast('Gagal memuat order: ' + error.message, 'error')
+        setLoading(false); return
+      }
+      setOrders((data ?? []).map(rowToOrder))
       setLoading(false)
     }
     load()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDummy, currentStore?.id])
+  }, [isDummy, currentStore?.id, isOnline])
 
   // ── Save new order ────────────────────────────────────────────────────────────
   const handleSave = useCallback(async (payload: Omit<CateringOrder, 'id' | 'store_id' | 'created_at' | 'remaining'>) => {
@@ -1041,25 +1116,59 @@ export default function CateringPage() {
       remaining: payload.total - payload.dp_amount,
       created_at: new Date().toISOString(),
     }
-    if (isDummy || !navigator.onLine) {
+    if (isDummy || !isOnline) {
       const updated = [...orders, newOrder].sort((a, b) => a.event_date.localeCompare(b.event_date))
       setOrders(updated); lsSet(LS_KEY, updated)
-    } else {
-      const { data, error } = await supabase.from('catering_orders').insert({
-        store_id: newOrder.store_id, customer_name: newOrder.customer_name,
-        customer_wa: newOrder.customer_wa, customer_institution: newOrder.customer_institution,
-        event_date: newOrder.event_date, event_time: newOrder.event_time,
-        location: newOrder.location, items: newOrder.items, total: newOrder.total,
-        dp_amount: newOrder.dp_amount, status: newOrder.status,
-        payment_method: newOrder.payment_method, notes: newOrder.notes,
-      }).select().single()
-      if (!error && data) {
-        const updated = [...orders, data as CateringOrder].sort((a, b) => a.event_date.localeCompare(b.event_date))
-        setOrders(updated)
+      setShowAdd(false)
+      return
+    }
+
+    const { data, error } = await supabase.from('catering_orders').insert({
+      store_id: newOrder.store_id,
+      customer_name: newOrder.customer_name,
+      customer_phone: newOrder.customer_wa,
+      customer_org: newOrder.customer_institution ?? null,
+      event_date: newOrder.event_date,
+      event_time: newOrder.event_time ?? null,
+      delivery_address: newOrder.location,
+      total_amount: newOrder.total,
+      dp_amount: newOrder.dp_amount,
+      remaining_amount: newOrder.remaining,
+      status: newOrder.status,
+      payment_method: newOrder.payment_method ?? null,
+      notes: newOrder.notes ?? null,
+    }).select().single()
+
+    if (error || !data) {
+      toast('Gagal menyimpan order: ' + (error?.message ?? 'unknown error'), 'error')
+      return
+    }
+
+    if (newOrder.items.length > 0) {
+      const { error: itemsErr } = await supabase.from('catering_order_items').insert(
+        newOrder.items.map((it) => ({
+          order_id: data.id,
+          package_id: null,
+          item_name: it.name,
+          qty: it.qty,
+          unit_price: it.unit_price,
+          hpp: 0,
+          subtotal: it.subtotal,
+        }))
+      )
+      if (itemsErr) {
+        toast('Order tersimpan, tapi rincian menu gagal: ' + itemsErr.message, 'error')
       }
     }
+
+    const finalOrder = rowToOrder({ ...data, catering_order_items: newOrder.items.map((it) => ({
+      package_id: null, item_name: it.name, qty: it.qty, unit_price: it.unit_price, subtotal: it.subtotal,
+    })) })
+    const updated = [...orders, finalOrder].sort((a, b) => a.event_date.localeCompare(b.event_date))
+    setOrders(updated)
+    toast('Order berhasil disimpan', 'success')
     setShowAdd(false)
-  }, [isDummy, orders, currentStore?.id])
+  }, [isDummy, isOnline, orders, currentStore?.id])
 
   // ── Edit order ────────────────────────────────────────────────────────────────
   const handleEdit = useCallback(async (updated: CateringOrder) => {
@@ -1067,20 +1176,29 @@ export default function CateringPage() {
       .sort((a, b) => a.event_date.localeCompare(b.event_date))
     setOrders(newOrders)
 
-    if (!isDummy && navigator.onLine) {
-      await supabase.from('catering_orders').update({
-        customer_name: updated.customer_name, customer_wa: updated.customer_wa,
-        customer_institution: updated.customer_institution,
-        event_date: updated.event_date, event_time: updated.event_time,
-        location: updated.location, total: updated.total, dp_amount: updated.dp_amount,
-        status: updated.status, payment_method: updated.payment_method, notes: updated.notes,
+    if (!isDummy && isOnline) {
+      const { error } = await supabase.from('catering_orders').update({
+        customer_name: updated.customer_name,
+        customer_phone: updated.customer_wa,
+        customer_org: updated.customer_institution ?? null,
+        event_date: updated.event_date,
+        event_time: updated.event_time ?? null,
+        delivery_address: updated.location,
+        total_amount: updated.total,
+        dp_amount: updated.dp_amount,
+        remaining_amount: updated.remaining,
+        status: updated.status,
+        payment_method: updated.payment_method ?? null,
+        notes: updated.notes ?? null,
       }).eq('id', updated.id)
+      if (error) toast('Gagal menyimpan perubahan: ' + error.message, 'error')
+      else toast('Perubahan tersimpan', 'success')
     } else {
       lsSet(LS_KEY, newOrders)
     }
     setEditOrder(null)
     setDetailOrder(null)
-  }, [isDummy, orders])
+  }, [isDummy, isOnline, orders])
 
   // ── Update status ─────────────────────────────────────────────────────────────
   const handleStatusChange = useCallback(async (id: string, status: OrderStatus) => {
@@ -1088,12 +1206,14 @@ export default function CateringPage() {
       o.id === id ? { ...o, status, remaining: status === 'lunas' || status === 'selesai' ? 0 : o.remaining } : o
     )
     setOrders(updated)
-    if (!isDummy && navigator.onLine) {
-      await supabase.from('catering_orders').update({ status }).eq('id', id)
+    if (!isDummy && isOnline) {
+      const remainingUpdate = status === 'lunas' || status === 'selesai' ? { status, remaining_amount: 0 } : { status }
+      const { error } = await supabase.from('catering_orders').update(remainingUpdate).eq('id', id)
+      if (error) toast('Gagal update status: ' + error.message, 'error')
     } else {
       lsSet(LS_KEY, updated)
     }
-  }, [isDummy, orders])
+  }, [isDummy, isOnline, orders])
 
   // ── Filtered + counts ─────────────────────────────────────────────────────────
   const filtered = useMemo(() =>
@@ -1119,17 +1239,16 @@ export default function CateringPage() {
       return o.status !== 'selesai' && ((d < 0 && o.status !== 'lunas') || (d >= 0 && d <= 3))
     })
     return {
-      totalPiutang:    piutangOrders.reduce((s, o) => s + o.remaining, 0),
+      totalPiutang:    piutangOrders.reduce((s, o) => s + (o.remaining ?? 0), 0),
       piutangCount:    piutangOrders.length,
       nearest,
       nearestDays:     nearest ? daysUntil(nearest.event_date) : null,
       bulanIniCount:   bulanIni.length,
-      totalBulanIni:   bulanIni.reduce((s, o) => s + o.total, 0),
+      totalBulanIni:   bulanIni.reduce((s, o) => s + (o.total ?? 0), 0),
       attentionCount:  needAttention.length,
     }
   }, [orders])
 
-  // ── Order card click: langsung buka edit ─────────────────────────────────────
   function handleCardClick(o: CateringOrder) {
     setDetailOrder(o)
   }
@@ -1137,237 +1256,256 @@ export default function CateringPage() {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-base)', paddingBottom: 80 }}>
 
-      {/* ── HERO — true full-bleed: no horizontal padding on wrapper ─────────── */}
-      {/*
-          Root cause fix: sebelumnya hero punya padding: '20px 20px 40px'
-          sehingga pada mobile ada 20px gap kiri-kanan.
-          Sekarang: wrapper hero tidak punya padding horizontal.
-          Padding hanya di dalam konten via inner div.
-      */}
-      <div style={{ background: 'var(--accent)', width: '100%' }} className="hero-section">
-        <div style={{ maxWidth: 1100, margin: '0 auto', padding: '18px 18px 38px' }}>
+      {/* ════════════════════════════════════════════
+          MOBILE LAYOUT (≤ 767px)
+      ════════════════════════════════════════════ */}
+      <div className="mobile-only">
 
-          {/* Mobile: label + CTA satu baris di atas */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.65)', textTransform: 'uppercase', letterSpacing: '.06em' }}>
-              🍱 Catering
-            </span>
-            <div style={{ display: 'flex', gap: 7, alignItems: 'center' }}>
-              <div className="view-toggle" style={{ display: 'flex', background: 'rgba(0,0,0,0.18)', borderRadius: 7, padding: 3, gap: 2 }}>
+        <div style={{ background: 'var(--accent)', width: '100%', padding: '14px 16px 26px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.65)', textTransform: 'uppercase', letterSpacing: '.06em' }}>🍱 Catering</span>
+            <button onClick={() => setShowAdd(true)} style={{ background: 'rgba(255,255,255,0.18)', border: 'none', color: '#fff', fontSize: 13, fontWeight: 700, padding: '7px 16px', borderRadius: 18, cursor: 'pointer' }}>+ Order</button>
+          </div>
+          <p style={{ margin: '0 0 4px', fontSize: 11, color: 'rgba(255,255,255,0.55)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.04em' }}>Total piutang aktif</p>
+          <p style={{ margin: '0 0 5px', fontSize: 30, fontWeight: 800, color: '#fff', lineHeight: 1.1, letterSpacing: '-0.5px' }}>{fmt(stats.totalPiutang)}</p>
+          <p style={{ margin: 0, fontSize: 13, color: 'rgba(255,255,255,0.6)' }}>{orders.length} order · {stats.piutangCount} belum lunas</p>
+        </div>
+
+        {orders.length > 0 && (
+          <div style={{ padding: '0 14px', marginTop: -18, position: 'relative', zIndex: 2 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div style={{ background: '#fff', borderRadius: 14, padding: '12px 14px', boxShadow: '0 2px 12px rgba(0,0,0,0.08)' }}>
+                <p style={{ margin: '0 0 6px', fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '.05em' }}>Acara Terdekat</p>
+                {stats.nearest ? (
+                  <>
+                    <p style={{ margin: '0 0 3px', fontSize: 14, fontWeight: 800, color: '#111' }}>{stats.nearest.customer_name}</p>
+                    <p style={{ margin: '0 0 5px', fontSize: 11, color: '#9CA3AF' }}>{fmtDateShort(stats.nearest.event_date)}{stats.nearest.event_time ? ` · ${stats.nearest.event_time}` : ''}</p>
+                    <span style={{ display: 'inline-block', fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: stats.nearestDays === 0 ? '#FEF2F2' : stats.nearestDays! <= 3 ? '#FFFBEB' : '#F0FDF4', color: stats.nearestDays === 0 ? '#DC2626' : stats.nearestDays! <= 3 ? '#B45309' : '#15803D' }}>
+                      {stats.nearestDays === 0 ? 'Hari ini' : stats.nearestDays === 1 ? 'Besok' : `${stats.nearestDays} hari lagi`}
+                    </span>
+                  </>
+                ) : <p style={{ margin: 0, fontSize: 12, color: '#9CA3AF', fontWeight: 600 }}>Belum ada</p>}
+              </div>
+              <div style={{ background: '#fff', borderRadius: 14, padding: '12px 14px', boxShadow: '0 2px 12px rgba(0,0,0,0.08)' }}>
+                <p style={{ margin: '0 0 6px', fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '.05em' }}>Bulan Ini</p>
+                <p style={{ margin: '0 0 3px', fontSize: 14, fontWeight: 800, color: '#111' }}>{stats.bulanIniCount} order</p>
+                <p style={{ margin: '0 0 5px', fontSize: 11, color: '#9CA3AF' }}>{fmt(stats.totalBulanIni)} nilai</p>
+                <span style={{ display: 'inline-block', fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: stats.attentionCount > 0 ? '#FFFBEB' : '#F0FDF4', color: stats.attentionCount > 0 ? '#B45309' : '#15803D' }}>
+                  {stats.attentionCount > 0 ? `${stats.attentionCount} perlu perhatian` : 'Aman ✓'}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div style={{ padding: '14px 14px 0' }}>
+          <div style={{ display: 'flex', gap: 6, overflowX: 'auto', marginBottom: 12, paddingBottom: 2 }} className="hide-scroll">
+            {FILTER_TABS.map(tab => {
+              const active = filter === tab.key; const count = counts[tab.key] ?? 0
+              return (
+                <button key={tab.key} onClick={() => setFilter(tab.key)} style={{ flexShrink: 0, padding: '6px 14px', borderRadius: 99, border: `1.5px solid ${active ? 'var(--accent)' : '#E5E7EB'}`, background: active ? 'var(--accent)' : '#fff', color: active ? '#fff' : '#6B7280', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
+                  {tab.key !== 'semua' && <span style={{ width: 6, height: 6, borderRadius: '50%', display: 'inline-block', flexShrink: 0, background: active ? 'rgba(255,255,255,0.7)' : STATUS_CFG[tab.key as OrderStatus].dot }} />}
+                  {tab.label}
+                  {count > 0 && <span style={{ fontSize: 10, fontWeight: 700, padding: '0 6px', borderRadius: 99, background: active ? 'rgba(255,255,255,0.25)' : '#F3F4F6', color: active ? '#fff' : '#6B7280' }}>{count}</span>}
+                </button>
+              )
+            })}
+          </div>
+          <p style={{ margin: '0 0 10px 2px', fontSize: 11, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '.05em' }}>{filtered.length} order ditemukan</p>
+          {loading ? (
+            [1,2,3].map(i => <div key={i} style={{ height: 120, borderRadius: 14, background: '#fff', border: '1px solid #F3F4F6', marginBottom: 10, animation: 'pulse 1.4s ease-in-out infinite' }} />)
+          ) : filtered.length === 0 ? (
+            <EmptyState filter={filter} onAdd={() => setShowAdd(true)} />
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {filtered.map(o => <OrderCard key={o.id} order={o} onClick={() => handleCardClick(o)} />)}
+            </div>
+          )}
+        </div>
+
+        <button onClick={() => setShowAdd(true)} aria-label="Tambah order" style={{ position: 'fixed', bottom: 84, right: 20, width: 52, height: 52, borderRadius: '50%', background: 'var(--accent)', color: '#fff', border: 'none', fontSize: 24, cursor: 'pointer', boxShadow: '0 4px 14px rgba(217,43,43,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+      </div>
+
+      {/* ════════════════════════════════════════════
+          DESKTOP / TABLET LAYOUT (≥ 768px)
+      ════════════════════════════════════════════ */}
+      <div className="desktop-only">
+        <div style={{ maxWidth: 1240, margin: '0 auto', padding: '28px 32px 40px' }}>
+
+          <div style={{ background: 'var(--accent)', borderRadius: 18, padding: '22px 28px', marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 24 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ margin: '0 0 6px', fontSize: 12, color: 'rgba(255,255,255,0.6)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>🍱 Catering</p>
+              <p style={{ margin: '0 0 10px', fontSize: 22, fontWeight: 800, color: '#fff', lineHeight: 1.2, letterSpacing: '-0.3px' }}>
+                {orders.length === 0
+                  ? 'Belum ada order catering. Mulai tambah order pertama!'
+                  : stats.attentionCount > 0
+                    ? `${stats.attentionCount} order perlu perhatian segera — cek jadwal terdekat!`
+                    : stats.totalPiutang > 0
+                      ? `Ada ${fmt(stats.totalPiutang)} piutang aktif dari ${stats.piutangCount} order belum lunas.`
+                      : `Semua order lunas! Total ${stats.bulanIniCount} order bulan ini senilai ${fmt(stats.totalBulanIni)}.`
+                }
+              </p>
+              <p style={{ margin: 0, fontSize: 13, color: 'rgba(255,255,255,0.6)' }}>
+                {orders.length} order terdaftar
+                {stats.nearest ? ` · Acara terdekat: ${stats.nearest.customer_name} ${stats.nearestDays === 0 ? 'hari ini' : stats.nearestDays === 1 ? 'besok' : `${stats.nearestDays} hari lagi`}` : ''}
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
+              <div style={{ display: 'flex', background: 'rgba(0,0,0,0.18)', borderRadius: 8, padding: 3, gap: 2 }}>
                 {([['list','☰'],['kanban','⊞'],['timeline','◎']] as const).map(([mode, icon]) => (
-                  <button key={mode} onClick={() => setViewMode(mode)} style={{
-                    padding: '4px 9px', borderRadius: 5, border: 'none', cursor: 'pointer',
-                    fontSize: 12, color: '#fff',
-                    background: viewMode === mode ? 'rgba(255,255,255,0.22)' : 'transparent',
-                  }}>{icon}</button>
+                  <button key={mode} onClick={() => setViewMode(mode)} style={{ padding: '6px 10px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 13, color: '#fff', background: viewMode === mode ? 'rgba(255,255,255,0.22)' : 'transparent' }}>{icon}</button>
                 ))}
               </div>
-              <button onClick={() => setShowAdd(true)} style={{
-                background: 'rgba(255,255,255,0.18)', border: 'none', color: '#fff',
-                fontSize: 13, fontWeight: 700, padding: '7px 16px', borderRadius: 18, cursor: 'pointer',
-                whiteSpace: 'nowrap',
-              }}>+ Order</button>
+              <button onClick={() => setShowAdd(true)} style={{ background: '#fff', border: 'none', color: 'var(--accent)', fontSize: 14, fontWeight: 700, padding: '10px 22px', borderRadius: 10, cursor: 'pointer', whiteSpace: 'nowrap' }}>+ Order</button>
             </div>
           </div>
 
-          {/* Metric utama */}
-          <p style={{ margin: '0 0 6px', fontSize: 11, color: 'rgba(255,255,255,0.55)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.04em' }}>
-            Total piutang aktif
-          </p>
-          <p style={{ margin: '0 0 8px', fontSize: 32, fontWeight: 800, color: '#fff', lineHeight: 1, letterSpacing: '-0.5px' }}>
-            {fmt(stats.totalPiutang)}
-          </p>
-          <p style={{ margin: 0, fontSize: 13, color: 'rgba(255,255,255,0.6)' }}>
-            {orders.length} order · {stats.piutangCount} belum lunas
-          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 20 }}>
+            <div style={{ background: '#fff', borderRadius: 14, padding: '16px 18px', border: '1px solid #EFEFEF' }}>
+              <p style={{ margin: '0 0 10px', fontSize: 11, fontWeight: 700, color: stats.totalPiutang > 0 ? '#DC2626' : '#15803D', textTransform: 'uppercase', letterSpacing: '.05em' }}>Piutang Aktif</p>
+              <p style={{ margin: '0 0 3px', fontSize: 22, fontWeight: 800, color: stats.totalPiutang > 0 ? '#C0392B' : '#15803D', letterSpacing: '-0.3px', whiteSpace: 'nowrap' }}>{fmt(stats.totalPiutang)}</p>
+              <p style={{ margin: '0 0 8px', fontSize: 12, color: stats.totalPiutang > 0 ? '#DC2626' : '#15803D', opacity: 0.7 }}>{stats.piutangCount} order belum lunas</p>
+              <span style={{ display: 'inline-block', fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 99, background: stats.totalPiutang > 0 ? 'rgba(220,38,38,0.10)' : 'rgba(21,128,61,0.10)', color: stats.totalPiutang > 0 ? '#C0392B' : '#15803D' }}>
+                {stats.totalPiutang > 0 ? 'perlu ditagih' : 'semua lunas ✓'}
+              </span>
+            </div>
 
-        </div>
-      </div>
-
-      {/* ── SUMMARY CARDS — overlap ke hero, padding ikut hero inner ────────── */}
-      {orders.length > 0 && (
-        <div style={{ maxWidth: 1100, margin: '0 auto', padding: '0 18px' }}>
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(2, 1fr)',
-            gap: 12, marginTop: -22,
-            position: 'relative', zIndex: 2,
-          }} className="summary-grid">
-            {/* Acara Terdekat */}
-            <div style={{ background: '#fff', borderRadius: 14, padding: '14px 16px', boxShadow: '0 2px 16px rgba(0,0,0,0.09)' }}>
-              <p style={{ margin: '0 0 8px', fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '.05em' }}>Acara Terdekat</p>
+            <div style={{ background: '#fff', borderRadius: 14, padding: '16px 18px', border: '1px solid #EFEFEF' }}>
+              <p style={{ margin: '0 0 10px', fontSize: 11, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '.05em' }}>Acara Terdekat</p>
               {stats.nearest ? (
                 <>
-                  <p style={{ margin: '0 0 4px', fontSize: 15, fontWeight: 800, color: '#111', lineHeight: 1.2 }}>{stats.nearest.customer_name}</p>
-                  <p style={{ margin: '0 0 6px', fontSize: 12, color: '#9CA3AF' }}>
-                    {fmtDateShort(stats.nearest.event_date)}{stats.nearest.event_time ? ` · ${stats.nearest.event_time}` : ''}
-                  </p>
-                  <span style={{
-                    display: 'inline-block', fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 99,
-                    background: stats.nearestDays === 0 ? '#FEF2F2' : stats.nearestDays! <= 3 ? '#FFFBEB' : '#F0FDF4',
-                    color:      stats.nearestDays === 0 ? '#DC2626' : stats.nearestDays! <= 3 ? '#B45309' : '#15803D',
-                  }}>
+                  <p style={{ margin: '0 0 3px', fontSize: 16, fontWeight: 800, color: '#111', letterSpacing: '-0.3px' }}>{stats.nearest.customer_name}</p>
+                  <p style={{ margin: '0 0 8px', fontSize: 12, color: '#9CA3AF' }}>{fmtDateShort(stats.nearest.event_date)}{stats.nearest.event_time ? ` · ${stats.nearest.event_time}` : ''}</p>
+                  <span style={{ display: 'inline-block', fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 99, background: stats.nearestDays === 0 ? '#FEF2F2' : stats.nearestDays! <= 3 ? '#FFFBEB' : '#F0FDF4', color: stats.nearestDays === 0 ? '#DC2626' : stats.nearestDays! <= 3 ? '#B45309' : '#15803D' }}>
                     {stats.nearestDays === 0 ? 'Hari ini' : stats.nearestDays === 1 ? 'Besok' : `${stats.nearestDays} hari lagi`}
                   </span>
                 </>
-              ) : (
-                <p style={{ margin: 0, fontSize: 13, color: '#9CA3AF', fontWeight: 600 }}>Belum ada</p>
-              )}
+              ) : <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#CCC' }}>Belum ada</p>}
             </div>
 
-            {/* Bulan Ini */}
-            <div style={{ background: '#fff', borderRadius: 14, padding: '14px 16px', boxShadow: '0 2px 16px rgba(0,0,0,0.09)' }}>
-              <p style={{ margin: '0 0 8px', fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '.05em' }}>Bulan Ini</p>
-              <p style={{ margin: '0 0 4px', fontSize: 15, fontWeight: 800, color: '#111', lineHeight: 1.2 }}>{stats.bulanIniCount} order</p>
-              <p style={{ margin: '0 0 6px', fontSize: 12, color: '#9CA3AF' }}>{fmt(stats.totalBulanIni)} nilai</p>
-              <span style={{
-                display: 'inline-block', fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 99,
-                background: stats.attentionCount > 0 ? '#FFFBEB' : '#F0FDF4',
-                color:      stats.attentionCount > 0 ? '#B45309' : '#15803D',
-              }}>
+            <div style={{ background: '#fff', borderRadius: 14, padding: '16px 18px', border: '1px solid #EFEFEF' }}>
+              <p style={{ margin: '0 0 10px', fontSize: 11, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '.05em' }}>Bulan Ini</p>
+              <p style={{ margin: '0 0 3px', fontSize: 24, fontWeight: 800, color: '#111', letterSpacing: '-0.5px' }}>{stats.bulanIniCount}</p>
+              <p style={{ margin: '0 0 8px', fontSize: 12, color: '#9CA3AF' }}>order · {fmt(stats.totalBulanIni)}</p>
+              <span style={{ display: 'inline-block', fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 99, background: stats.attentionCount > 0 ? '#FFFBEB' : '#F0FDF4', color: stats.attentionCount > 0 ? '#B45309' : '#15803D' }}>
                 {stats.attentionCount > 0 ? `${stats.attentionCount} perlu perhatian` : 'Aman ✓'}
               </span>
             </div>
-          </div>
-        </div>
-      )}
 
-      {/* ── FILTER + CONTENT ──────────────────────────────────────────────────── */}
-      <div style={{ maxWidth: 1100, margin: '0 auto', padding: '16px 18px 0' }}>
-
-        {/* Filter tabs */}
-        <div style={{ display: 'flex', gap: 6, overflowX: 'auto', marginBottom: 14, paddingBottom: 2 }} className="hide-scroll">
-          {FILTER_TABS.map(tab => {
-            const active = filter === tab.key
-            const count  = counts[tab.key] ?? 0
-            return (
-              <button key={tab.key} onClick={() => setFilter(tab.key)} style={{
-                flexShrink: 0, padding: '6px 14px', borderRadius: 99,
-                border: `1.5px solid ${active ? 'var(--accent)' : '#E5E7EB'}`,
-                background: active ? 'var(--accent)' : '#fff',
-                color: active ? '#fff' : '#6B7280',
-                fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                display: 'flex', alignItems: 'center', gap: 5, transition: 'all 0.12s',
-              }}>
-                {tab.key !== 'semua' && (
-                  <span style={{ width: 6, height: 6, borderRadius: '50%', display: 'inline-block', flexShrink: 0, background: active ? 'rgba(255,255,255,0.7)' : STATUS_CFG[tab.key as OrderStatus].dot }} />
-                )}
-                {tab.label}
-                {count > 0 && (
-                  <span style={{ fontSize: 10, fontWeight: 700, padding: '0 6px', borderRadius: 99, background: active ? 'rgba(255,255,255,0.25)' : '#F3F4F6', color: active ? '#fff' : '#6B7280' }}>{count}</span>
-                )}
-              </button>
-            )
-          })}
-        </div>
-
-        {/* Section label */}
-        <p style={{ margin: '0 0 10px 2px', fontSize: 11, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '.05em' }}>
-          {filtered.length} order ditemukan
-        </p>
-
-        {/* Content */}
-        {loading ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {[1,2,3].map(i => (
-              <div key={i} style={{ height: 120, borderRadius: 14, background: '#fff', border: '1px solid #F3F4F6', animation: 'pulse 1.4s ease-in-out infinite' }} />
-            ))}
-          </div>
-        ) : filtered.length === 0 ? (
-          <EmptyState filter={filter} onAdd={() => setShowAdd(true)} />
-        ) : (
-          <>
-            {/* Mobile — selalu list */}
-            <div className="mobile-only">
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {filtered.map(o => <OrderCard key={o.id} order={o} onClick={() => handleCardClick(o)} />)}
-              </div>
+            <div style={{ background: '#fff', borderRadius: 14, padding: '16px 18px', border: '1px solid #EFEFEF' }}>
+              <p style={{ margin: '0 0 10px', fontSize: 11, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '.05em' }}>Total Tagihan</p>
+              <p style={{ margin: '0 0 3px', fontSize: 22, fontWeight: 800, color: '#111', letterSpacing: '-0.3px', whiteSpace: 'nowrap' }}>{fmt(orders.reduce((s,o)=>s+(o.total??0),0))}</p>
+              <p style={{ margin: '0 0 8px', fontSize: 12, color: '#9CA3AF' }}>dari {orders.length} order</p>
+              <span style={{ display: 'inline-block', fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 99, background: '#F0F9FF', color: '#0369A1' }}>
+                masuk {fmt(orders.reduce((s,o)=>s+(o.dp_amount??0),0))}
+              </span>
             </div>
+          </div>
 
-            {/* Desktop — viewMode */}
-            <div className="desktop-only">
-              {viewMode === 'list' && (
-                <div className="order-grid">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 260px', gap: 20, alignItems: 'start' }}>
+
+            <div>
+              <div style={{ display: 'flex', gap: 6, overflowX: 'auto', marginBottom: 14, paddingBottom: 2 }} className="hide-scroll">
+                {FILTER_TABS.map(tab => {
+                  const active = filter === tab.key; const count = counts[tab.key] ?? 0
+                  return (
+                    <button key={tab.key} onClick={() => setFilter(tab.key)} style={{ flexShrink: 0, padding: '7px 16px', borderRadius: 99, border: `1.5px solid ${active ? 'var(--accent)' : '#E5E7EB'}`, background: active ? 'var(--accent)' : '#fff', color: active ? '#fff' : '#6B7280', fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, transition: 'all 0.12s' }}>
+                      {tab.key !== 'semua' && <span style={{ width: 6, height: 6, borderRadius: '50%', display: 'inline-block', flexShrink: 0, background: active ? 'rgba(255,255,255,0.7)' : STATUS_CFG[tab.key as OrderStatus].dot }} />}
+                      {tab.label}
+                      {count > 0 && <span style={{ fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 99, background: active ? 'rgba(255,255,255,0.25)' : '#F3F4F6', color: active ? '#fff' : '#6B7280' }}>{count}</span>}
+                    </button>
+                  )
+                })}
+              </div>
+
+              <p style={{ margin: '0 0 12px 2px', fontSize: 12, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '.05em' }}>{filtered.length} order ditemukan</p>
+
+              {loading ? (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14 }}>
+                  {[1,2,3,4].map(i => <div key={i} style={{ height: 160, borderRadius: 14, background: '#fff', border: '1px solid #F3F4F6', animation: 'pulse 1.4s ease-in-out infinite' }} />)}
+                </div>
+              ) : filtered.length === 0 ? (
+                <EmptyState filter={filter} onAdd={() => setShowAdd(true)} />
+              ) : viewMode === 'list' ? (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14 }}>
                   {filtered.map(o => <OrderCard key={o.id} order={o} onClick={() => handleCardClick(o)} />)}
                 </div>
+              ) : viewMode === 'kanban' ? (
+                <KanbanView orders={filtered} onCardClick={handleCardClick} />
+              ) : (
+                <TimelineView orders={filtered} onCardClick={handleCardClick} />
               )}
-              {viewMode === 'kanban' && <KanbanView orders={filtered} onCardClick={handleCardClick} />}
-              {viewMode === 'timeline' && <TimelineView orders={filtered} onCardClick={handleCardClick} />}
             </div>
-          </>
-        )}
-      </div>
 
-      {/* Mobile FAB */}
-      <button onClick={() => setShowAdd(true)} className="mobile-fab" aria-label="Tambah order" style={{
-        position: 'fixed', bottom: 84, right: 20,
-        width: 52, height: 52, borderRadius: '50%',
-        background: 'var(--accent)', color: '#fff', border: 'none',
-        fontSize: 24, cursor: 'pointer',
-        boxShadow: '0 4px 14px rgba(217,43,43,0.35)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}>+</button>
+            <div style={{ position: 'sticky', top: 20 }}>
+
+              {stats.attentionCount > 0 && (
+                <div style={{ background: '#FFFBEB', borderRadius: 14, border: '1px solid #FDE68A', padding: '16px 18px', marginBottom: 14 }}>
+                  <p style={{ margin: '0 0 12px', fontSize: 11, fontWeight: 700, color: '#B45309', textTransform: 'uppercase', letterSpacing: '.05em' }}>⚠️ Perlu Perhatian</p>
+                  {orders.filter(o => {
+                    const d = daysUntil(o.event_date)
+                    return o.status !== 'selesai' && ((d < 0 && o.status !== 'lunas') || (d >= 0 && d <= 3))
+                  }).map((o, i, arr) => (
+                    <div key={o.id} onClick={() => handleCardClick(o)} style={{ cursor: 'pointer', padding: '10px 0', borderBottom: i < arr.length - 1 ? '1px solid #FEF3C7' : 'none' }}>
+                      <p style={{ margin: '0 0 5px', fontSize: 13, fontWeight: 700, color: '#111' }}>{o.customer_name}</p>
+                      <p style={{ margin: 0, fontSize: 11, color: '#B45309' }}>
+                        {daysUntil(o.event_date) < 0 ? '❗ Overdue' : daysUntil(o.event_date) === 0 ? '⚠️ Hari ini' : `⚠️ ${daysUntil(o.event_date)} hari lagi`} · {o.location}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #EFEFEF', padding: '16px 18px', marginBottom: 14 }}>
+                <p style={{ margin: '0 0 12px', fontSize: 11, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '.05em' }}>Status Order</p>
+                {STATUS_ORDER.map((s, i) => {
+                  const n = orders.filter(o => o.status === s).length
+                  const cfg = STATUS_CFG[s]
+                  return (
+                    <div key={s} onClick={() => setFilter(s)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', borderBottom: i < STATUS_ORDER.length - 1 ? '1px solid #F5F5F5' : 'none', cursor: 'pointer' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: cfg.dot, flexShrink: 0 }} />
+                        <span style={{ fontSize: 13, color: '#555', fontWeight: 500 }}>{cfg.label}</span>
+                      </div>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: n > 0 ? cfg.color : '#DDD' }}>{n}</span>
+                    </div>
+                  )
+                })}
+              </div>
+
+              <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #EFEFEF', padding: '16px 18px' }}>
+                <p style={{ margin: '0 0 12px', fontSize: 11, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '.05em' }}>Keuangan</p>
+                {[
+                  { label: 'Total Tagihan', value: fmt(orders.reduce((s,o)=>s+(o.total??0),0)),     color: '#111' },
+                  { label: 'Sudah Masuk',  value: fmt(orders.reduce((s,o)=>s+(o.dp_amount??0),0)), color: '#15803D' },
+                  { label: 'Piutang',      value: fmt(orders.reduce((s,o)=>s+(o.remaining??0),0)), color: '#C0392B' },
+                ].map((row, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: i < 2 ? '1px solid #F5F5F5' : 'none' }}>
+                    <span style={{ fontSize: 13, color: '#888' }}>{row.label}</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: row.color }}>{row.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <style>{`
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.45} }
         .hide-scroll::-webkit-scrollbar { display:none }
         .hide-scroll { -ms-overflow-style:none; scrollbar-width:none }
 
-        /* ── Hero: benar-benar full bleed di semua ukuran ── */
-        /* Jangan ada margin/padding pada wrapper terluar hero */
-        .hero-section {
-          /* margin: 0 dipastikan tidak ada override dari parent */
-          margin-left: 0 !important;
-          margin-right: 0 !important;
-        }
+        .mobile-only { display: block }
+        .desktop-only { display: none }
 
-        /* ── Mobile: < 768px ── */
-        @media (max-width: 767px) {
-          .desktop-only { display: none !important }
-          .mobile-only  { display: block !important }
-          .view-toggle  { display: none !important }
-          .summary-grid { grid-template-columns: repeat(2, 1fr) !important }
-        }
-
-        /* ── Tablet: 768px – 1023px ── */
-        @media (min-width: 768px) and (max-width: 1023px) {
-          .desktop-only { display: block !important }
+        @media (min-width: 768px) {
           .mobile-only  { display: none !important }
-          .mobile-fab   { display: none !important }
-          .summary-grid { grid-template-columns: repeat(2, 1fr) !important }
-          .order-grid   { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px }
-        }
-
-        /* ── Desktop: ≥ 1024px — true dashboard layout ── */
-        @media (min-width: 1024px) {
           .desktop-only { display: block !important }
-          .mobile-only  { display: none !important }
-          .mobile-fab   { display: none !important }
-
-          /* Summary: 2 col sama lebar, max 640px biar tidak terlalu lebar */
-          .summary-grid {
-            grid-template-columns: repeat(2, minmax(0, 320px)) !important;
-            max-width: 660px !important;
-          }
-
-          /* Order card: 2 kolom proporsional */
-          .order-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 16px;
-          }
         }
 
-        /* ── Large desktop: ≥ 1440px ── */
-        @media (min-width: 1440px) {
-          .summary-grid {
-            grid-template-columns: repeat(2, minmax(0, 360px)) !important;
-            max-width: 760px !important;
-          }
-          .order-grid {
-            grid-template-columns: repeat(2, 1fr);
-            gap: 18px;
-          }
+        @media (min-width: 1400px) {
+          .desktop-only > div { max-width: 1360px !important }
         }
       `}</style>
 

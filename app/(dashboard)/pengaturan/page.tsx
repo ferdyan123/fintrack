@@ -326,14 +326,53 @@ export default function PengaturanPage() {
     closeEditName()
   }
 
-  // ── Reset data demo ──────────────────────────────────────────────────────
+  // ── Reset data (lokal + Supabase kalau online) ──────────────────────────
   async function handleResetData() {
-    if (!confirm('Reset semua data demo (produk, kategori pengeluaran, dan antrian sinkronisasi yang belum ter-upload)? Tindakan ini tidak bisa dibatalkan.')) return
+    const isDummy = !currentStore || currentStore.id === 'dummy-store-001' || !navigator.onLine
+
+    const warningExtra = isDummy
+      ? ''
+      : ' Ini juga akan MENGHAPUS PERMANEN semua produk, kategori, dan transaksi (sales, pengeluaran, catering) toko ini di database.'
+    if (!confirm('Reset semua data toko ini?' + warningExtra + ' Tindakan ini tidak bisa dibatalkan.')) return
+
     setResetting(true)
+
+    if (!isDummy) {
+      try {
+        const supabase = createClient()
+        const storeId = currentStore.id
+
+        // Urutan penghapusan mengikuti relasi FK: hapus anak dulu baru induk.
+        // catering_payments punya store_id langsung, jadi bisa langsung dihapus.
+        await supabase.from('catering_payments').delete().eq('store_id', storeId)
+
+        // catering_order_items tidak punya store_id langsung — cari dulu
+        // order id milik toko ini, baru hapus item-nya.
+        const { data: orders } = await supabase
+          .from('catering_orders').select('id').eq('store_id', storeId)
+        const orderIds = (orders ?? []).map((o: { id: string }) => o.id)
+        if (orderIds.length > 0) {
+          await supabase.from('catering_order_items').delete().in('order_id', orderIds)
+        }
+        await supabase.from('catering_orders').delete().eq('store_id', storeId)
+
+        await supabase.from('sales').delete().eq('store_id', storeId)
+        await supabase.from('expenses').delete().eq('store_id', storeId)
+        await supabase.from('products').delete().eq('store_id', storeId)
+        await supabase.from('expense_categories').delete().eq('store_id', storeId)
+
+        // Catatan: catering_packages (master paket) sengaja TIDAK dihapus —
+        // diperlakukan seperti data master/setting, bukan data transaksi.
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Gagal reset data di server'
+        toast('Sebagian gagal: ' + msg, 'error')
+      }
+    }
+
     setProducts([])
     setExpenseCategories([])
     clearPendingSync()
-    toast('Data demo berhasil direset', 'info')
+    toast('Data berhasil direset', 'info')
     setResetting(false)
   }
 
@@ -581,37 +620,38 @@ export default function PengaturanPage() {
       {/* Akun & Data */}
       <div style={S.section}>
         <p style={S.sectionTitle}>Akun & Data</p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <button
             onClick={handleResetData}
             disabled={resetting}
             style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-              width: '100%', padding: '13px',
-              borderRadius: 14, border: '1px solid #FDE68A', background: '#FFFBEB',
-              color: '#B45309', fontSize: 14, fontWeight: 600,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              width: '100%', padding: '9px 14px',
+              borderRadius: 10, border: '1px solid #FDE68A', background: '#FFFBEB',
+              color: '#B45309', fontSize: 13, fontWeight: 600,
               cursor: resetting ? 'wait' : 'pointer',
             }}
           >
-            <RotateCcw size={16} />
-            {resetting ? 'Mereset...' : 'Reset Data Demo'}
+            <RotateCcw size={14} />
+            {resetting ? 'Mereset...' : 'Reset Data'}
           </button>
-          <p style={{ margin: '-4px 0 0', fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5 }}>
-            Menghapus produk, kategori pengeluaran, dan antrian sinkronisasi yang tersimpan lokal di perangkat ini. Data yang sudah tersimpan di Supabase (mode online) tidak terpengaruh.
+          <p style={{ margin: '-2px 0 0', fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+            Mode dummy/offline: menghapus produk, kategori, dan antrian sinkronisasi yang tersimpan lokal di perangkat ini.
+            Mode online: sekalian menghapus permanen produk, kategori, sales, pengeluaran, dan data catering toko ini di Supabase.
           </p>
 
           <button
             onClick={handleLogout}
             disabled={loggingOut}
             style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-              width: '100%', padding: '13px', marginTop: 6,
-              borderRadius: 14, border: '1px solid var(--danger-bg)', background: 'var(--danger-bg)',
-              color: 'var(--danger)', fontSize: 14, fontWeight: 600,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              width: '100%', padding: '9px 14px', marginTop: 4,
+              borderRadius: 10, border: '1px solid var(--danger-bg)', background: 'var(--danger-bg)',
+              color: 'var(--danger)', fontSize: 13, fontWeight: 600,
               cursor: loggingOut ? 'wait' : 'pointer',
             }}
           >
-            <LogOut size={16} />
+            <LogOut size={14} />
             {loggingOut ? 'Keluar...' : 'Keluar'}
           </button>
         </div>

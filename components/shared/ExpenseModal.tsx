@@ -138,7 +138,19 @@ export function ExpenseModal({ open, onClose, onSaved }: ExpenseModalProps) {
       }
       if (data) tx.id = data.id
     } else {
-      addPendingSync({ table: 'expenses', action: 'insert', payload: tx })
+      /*
+       * FIX ERROR 2: Type 'Expense' is not assignable to type 'Record<string, unknown>'.
+       * Expense punya field opsional dengan tipe spesifik sehingga TypeScript menolak
+       * assign langsung ke Record<string, unknown> (index signature tidak kompatibel).
+       * Solusi: double-cast via `unknown` sebagai jembatan yang aman — ini idiom standar
+       * TypeScript untuk kasus di mana kita tahu runtime shape-nya benar tapi tipe
+       * strukturalnya tidak kompatibel secara assignability.
+       */
+      addPendingSync({
+        table: 'expenses',
+        action: 'insert',
+        payload: tx as unknown as Record<string, unknown>,
+      })
     }
 
     onSaved?.(tx)
@@ -160,7 +172,7 @@ export function ExpenseModal({ open, onClose, onSaved }: ExpenseModalProps) {
         }}
         onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
       >
-        {/* Sheet — bottom sheet on mobile, centered on desktop */}
+        {/* Sheet */}
         <div style={{
           background: 'var(--bg-surface)',
           borderRadius: '20px 20px 0 0',
@@ -326,7 +338,7 @@ export function ExpenseModal({ open, onClose, onSaved }: ExpenseModalProps) {
             )}
           </div>
 
-          {/* Footer — fixed di bawah */}
+          {/* Footer */}
           <div style={{ padding: '12px 18px 20px', paddingBottom: 'max(20px, env(safe-area-inset-bottom))' }}>
             <button
               onClick={handleSave}
@@ -359,7 +371,6 @@ export function ExpenseModal({ open, onClose, onSaved }: ExpenseModalProps) {
         @keyframes fadeIn  { from { opacity: 0; }               to { opacity: 1; } }
         @keyframes slideUp { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
-        /* Desktop: tampilkan modal di tengah, bukan bottom sheet */
         @media (min-width: 640px) {
           .expense-modal-overlay {
             align-items: center !important;
