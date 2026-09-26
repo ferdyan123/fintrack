@@ -115,14 +115,17 @@ export default function KasirPage() {
       <div className="kasir-desktop">
         {/* Kolom kiri — menu */}
         <div className="kasir-left">
-          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
+          {/* Hero desktop */}
+          <div style={{
+            background:'var(--accent)', borderRadius:16, padding:'20px 24px',
+            marginBottom:20, display:'flex', alignItems:'center', justifyContent:'space-between',
+          }}>
             <div>
-              <h1 style={{ margin:0, fontSize:20, fontWeight:800, color:'var(--text-primary)' }}>Kasir</h1>
-              <p style={{ margin:'2px 0 0', fontSize:12, color:'var(--text-muted)' }}>{products.length} menu tersedia</p>
+              <h1 style={{ margin:0, fontSize:20, fontWeight:800, color:'white' }}>Kasir</h1>
+              <p style={{ margin:'2px 0 0', fontSize:12, color:'rgba(255,255,255,0.75)' }}>{products.length} menu tersedia</p>
             </div>
-            <span style={{ fontSize:12, fontWeight:600, color:'var(--text-muted)',
-              background:'var(--bg-elevated)', border:'1px solid var(--border)',
-              borderRadius:10, padding:'6px 12px' }}>
+            <span style={{ fontSize:12, fontWeight:600, color:'rgba(255,255,255,0.85)',
+              background:'rgba(255,255,255,0.15)', borderRadius:10, padding:'6px 12px' }}>
               {new Date().toLocaleDateString('id-ID', { weekday:'short', day:'numeric', month:'short' })}
             </span>
           </div>
@@ -239,28 +242,34 @@ export default function KasirPage() {
 
       {/* ══ MOBILE <768px ══ */}
       <div className="kasir-mobile">
-        <div style={{ padding:'16px 16px 0', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+        {/* Hero mobile — same pattern as dashboard */}
+        <div style={{
+          background:'var(--accent)', borderRadius:16, overflow:'hidden',
+          margin:'0 0 0 0', padding:'18px 20px',
+          display:'flex', alignItems:'center', justifyContent:'space-between',
+        }}>
           <div>
-            <h1 style={{ margin:0, fontSize:20, fontWeight:800, color:'var(--text-primary)' }}>Kasir</h1>
-            <p style={{ margin:'2px 0 0', fontSize:12, color:'var(--text-muted)' }}>{products.length} menu tersedia</p>
+            <h1 style={{ margin:0, fontSize:20, fontWeight:800, color:'white' }}>Kasir</h1>
+            <p style={{ margin:'3px 0 0', fontSize:12, color:'rgba(255,255,255,0.75)' }}>{products.length} menu tersedia</p>
           </div>
-          <span style={{ fontSize:11, fontWeight:600, color:'var(--text-muted)',
-            background:'var(--bg-elevated)', border:'1px solid var(--border)',
-            borderRadius:10, padding:'5px 10px' }}>
+          <span style={{ fontSize:11, fontWeight:600, color:'rgba(255,255,255,0.9)',
+            background:'rgba(255,255,255,0.18)', borderRadius:10, padding:'5px 10px',
+            whiteSpace:'nowrap' }}>
             {new Date().toLocaleDateString('id-ID', { weekday:'short', day:'numeric', month:'short' })}
           </span>
         </div>
 
-        <div style={{ padding:'14px 16px 0' }}>
+        <div style={{ marginTop:14 }}>
           <div style={{ display:'flex', alignItems:'center', gap:8,
             background:'var(--bg-surface)', border:'1.5px solid var(--border)',
-            borderRadius:12, padding:'11px 14px' }}>
+            borderRadius:12, padding:'11px 14px',
+            boxShadow:'0 1px 4px rgba(0,0,0,0.05)' }}>
             <User size={14} color="var(--text-muted)" style={{ flexShrink:0 }} />
             <input type="text" value={customerName}
               onChange={(e) => setCustomerName(e.target.value)}
               placeholder="Nama customer (opsional)"
               style={{ flex:1, border:'none', outline:'none', background:'transparent',
-                fontSize:14, color:'var(--text-primary)', fontFamily:'inherit' }} />
+                fontSize:13, color:'var(--text-primary)', fontFamily:'inherit' }} />
             {customerName && (
               <button onClick={() => setCustomerName('')} style={{ border:'none', background:'none',
                 cursor:'pointer', color:'var(--text-muted)', padding:0, fontSize:18, lineHeight:1 }}>×</button>
@@ -268,10 +277,10 @@ export default function KasirPage() {
           </div>
         </div>
 
-        <p style={{ margin:'16px 16px 10px', fontSize:11, fontWeight:700,
+        <p style={{ margin:'14px 0 10px', fontSize:11, fontWeight:700,
           textTransform:'uppercase', letterSpacing:'0.1em', color:'var(--text-muted)' }}>Pilih Menu</p>
 
-        <div style={{ padding:'0 16px' }}>
+        <div>
           <MenuGrid products={products} getQty={getQty} onAdd={add} onMinus={minus} />
         </div>
 
@@ -378,7 +387,7 @@ export default function KasirPage() {
         .kasir-desktop { display: none; height: calc(100dvh - 56px); overflow: hidden; }
         .kasir-left    { flex: 1; overflow-y: auto; padding: 20px 24px; border-right: 1px solid var(--border); }
         .kasir-right   { width: 380px; flex-shrink: 0; display: flex; flex-direction: column; overflow: hidden; border-left: 1px solid var(--border); }
-        .kasir-mobile  { display: block; }
+        .kasir-mobile  { display: block; padding: 16px 16px 0; }
 
         @media (min-width: 768px) {
           .kasir-desktop { display: flex !important; }

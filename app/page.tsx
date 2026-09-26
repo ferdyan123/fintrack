@@ -29,7 +29,7 @@ export default function LoginPage() {
     const supabase = createClient()
     const { error: e } = await supabase.auth.signInWithPassword({ email, password })
     if (e) { setError(e.message); setLoading(false); return }
-    router.push('/')
+    router.push('/dashboard')
   }
 
   async function handleSignup() {
@@ -46,20 +46,10 @@ export default function LoginPage() {
     const { data, error: e } = await supabase.auth.signUp({ email, password })
     if (e) { setError(e.message); setLoading(false); return }
 
-    // Kalau project Supabase mewajibkan konfirmasi email, belum ada
-    // session aktif di sini — user harus konfirmasi dulu baru bisa login,
-    // dan proses buat/join toko baru bisa jalan setelah itu (di halaman
-    // ini juga, tab "Masuk", karena hydration di providers.tsx akan
-    // mendeteksi user belum punya toko).
     if (!data.session) {
       setInfo('Akun berhasil dibuat! Cek email untuk konfirmasi, lalu login di sini.')
-      setEmail('')
-      setPassword('')
-      setStoreName('')
-      setStoreCode('')
-      setLoading(false)
-      setTab('login')
-      return
+      setEmail(''); setPassword(''); setStoreName(''); setStoreCode('')
+      setLoading(false); setTab('login'); return
     }
 
     const userId = data.user!.id
@@ -72,8 +62,7 @@ export default function LoginPage() {
       })
       if (storeErr) {
         setError('Akun dibuat, tapi gagal membuat toko: ' + storeErr.message)
-        setLoading(false)
-        return
+        setLoading(false); return
       }
     } else {
       const { data: store, error: findErr } = await supabase
@@ -81,23 +70,19 @@ export default function LoginPage() {
 
       if (findErr || !store) {
         setError('Kode toko tidak ditemukan. Periksa kembali kodenya.')
-        setLoading(false)
-        return
+        setLoading(false); return
       }
 
       const { error: joinErr } = await supabase.from('store_members').insert({
-        store_id: store.id,
-        user_id: userId,
-        role: 'staff',
+        store_id: store.id, user_id: userId, role: 'staff',
       })
       if (joinErr) {
         setError('Akun dibuat, tapi gagal gabung ke toko: ' + joinErr.message)
-        setLoading(false)
-        return
+        setLoading(false); return
       }
     }
 
-    router.push('/')
+    router.push('/dashboard')
   }
 
   const S = {
@@ -124,14 +109,13 @@ export default function LoginPage() {
   return (
     <div style={S.page}>
       <div style={S.card}>
-        {/* Logo & Title */}
+        {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: 24 }}>
-          <div style={{
-            width: 52, height: 52, borderRadius: 16, background: '#D92B2B',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            margin: '0 auto 12px', fontSize: 26,
-          }}>🍽️</div>
-          <h1 style={{ margin: '0 0 4px', fontSize: 20, fontWeight: 800, color: '#1A0A0A' }}>FinTrack</h1>
+          <img
+            src="/assets/logo-full.png"
+            alt="Nong Ena Pecel Lele & Ayam"
+            style={{ width: 160, height: 'auto', margin: '0 auto 8px', display: 'block' }}
+          />
           <p style={{ margin: 0, fontSize: 13, color: '#B08080' }}>Kelola bisnis UMKM kamu</p>
         </div>
 
@@ -176,7 +160,7 @@ export default function LoginPage() {
           </div>
         )}
 
-        {/* Form fields */}
+        {/* Form */}
         <div>
           <label style={S.label}>Email</label>
           <input style={S.input} type="email" value={email}
@@ -198,8 +182,7 @@ export default function LoginPage() {
             <>
               <label style={S.label}>Kode Toko</label>
               <input style={{ ...S.input, textTransform: 'uppercase' }} value={storeCode}
-                onChange={(e) => setStoreCode(e.target.value)} placeholder="cth: A1B2C3"
-                maxLength={6} />
+                onChange={(e) => setStoreCode(e.target.value)} placeholder="cth: A1B2C3" maxLength={6} />
             </>
           )}
         </div>

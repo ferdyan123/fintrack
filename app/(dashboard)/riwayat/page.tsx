@@ -266,7 +266,7 @@ function KpiCards({ income, expense, count, loading }: { income:number; expense:
     { icon:'🧾', bg:'#F3E8FF', label:'Transaksi',   value:`${count}`,            delta:'total dicatat',        deltaColor:'#7C3AED' },
   ]
   return (
-    <div className="kpi-4col" style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10 }}>
+    <div className="kpi-4col" style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12 }}>
       {cards.map((c,i)=>(
         <div key={i} style={{ background:'var(--bg-surface)', border:'1px solid var(--border)', borderRadius:14, padding:14 }}>
           {loading ? (
@@ -513,10 +513,10 @@ export default function RiwayatPage() {
 
       <div style={{ background:'var(--bg-base)', minHeight:'100vh' }}>
         {/* Wrapper padding — sama kayak dash-wrap di dashboard */}
-        <div className="page-inner" style={{ maxWidth:1100, margin:'0 auto', padding:'24px 24px 80px' }}>
+        <div className="page-inner" style={{ maxWidth:1100, margin:'0 auto', padding:'24px 20px 80px' }}>
 
           {/* ── HERO CARD (merah, borderRadius 16, ikut scroll) ── */}
-          <div style={{ marginBottom:12 }}>
+          <div style={{ marginBottom:20 }}>
             <HeroCard
               filters={filters}
               categories={categories}
@@ -531,7 +531,7 @@ export default function RiwayatPage() {
           <KpiCards income={income} expense={expense} count={count} loading={loading}/>
 
           {/* ── TRANSACTION LIST ── */}
-          <div style={{ marginTop:16 }}>
+          <div style={{ marginTop:20 }}>
             {/* Skeleton */}
             {loading && (
               <div style={{ background:'var(--bg-surface)', border:'1px solid var(--border)', borderRadius:14, overflow:'hidden' }}>

@@ -10,13 +10,13 @@ import { useState } from 'react'
 import { MoreDrawer } from './MoreDrawer'
 
 const TABS = [
-  { href: '/',              label: 'Dashboard'   },
-  { href: '/kasir',         label: 'Kasir'       },
-  { href: '/catering',      label: 'Catering'    },
-  { href: '/pengeluaran',   label: 'Pengeluaran' },
-  { href: '/analitik',      label: 'Analitik'    },
-  { href: '/riwayat',       label: 'Riwayat'     },
-  { href: '/pengaturan',    label: 'Pengaturan'  },
+  { href: '/',            label: 'Dashboard'   },
+  { href: '/kasir',       label: 'Kasir'       },
+  { href: '/catering',    label: 'Catering'    },
+  { href: '/pengeluaran', label: 'Pengeluaran' },
+  { href: '/analitik',    label: 'Analitik'    },
+  { href: '/riwayat',     label: 'Riwayat'     },
+  { href: '/pengaturan',  label: 'Pengaturan'  },
 ]
 
 export function Topbar() {
@@ -44,26 +44,26 @@ export function Topbar() {
 
   return (
     <>
-      {/* ── DESKTOP TOPBAR ── */}
+      {/* DESKTOP TOPBAR */}
       <header style={{
         position: 'fixed', top: 0, left: 0, right: 0, zIndex: 30,
-        background: '#ffffff',
-        borderBottom: '1px solid #F0E0E0',
-        height: 56,
-        display: 'flex', alignItems: 'center',
-        padding: '0 24px',
-        gap: 16,
+        background: '#ffffff', borderBottom: '1px solid #F0E0E0',
+        height: 56, display: 'flex', alignItems: 'center',
+        padding: '0 24px', gap: 16,
       }} className="topbar-desktop">
-        {/* Logo */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, marginRight: 8 }}>
-          <div style={{
-            width: 28, height: 28, borderRadius: 8, background: '#D92B2B',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 14,
-          }}>🍽️</div>
-          <span style={{ fontSize: 14, fontWeight: 700, color: '#1A0A0A', letterSpacing: '-0.2px' }}>
-            {currentStore?.name ?? 'FinTrack'}
-          </span>
+
+        {/* Logo + nama toko */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, marginRight: 8 }}>
+          <img
+            src="/assets/logo-full.png"
+            alt="Nong Ena"
+            style={{ height: 40, width: 'auto', objectFit: 'contain', display: 'block' }}
+          />
+          {currentStore?.name && (
+            <span style={{ fontSize: 13, fontWeight: 700, color: '#1A0A0A', letterSpacing: '-0.2px' }}>
+              {currentStore.name}
+            </span>
+          )}
         </div>
 
         {/* Tabs */}
@@ -88,51 +88,44 @@ export function Topbar() {
         {/* Right */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
           <SyncIndicator />
-          <button style={btnStyle} onClick={() => setActionSheetOpen(true)}>
-            + Catat
-          </button>
+          <button style={btnStyle} onClick={() => setActionSheetOpen(true)}>+ Catat</button>
         </div>
       </header>
 
-      {/* ── MOBILE TOPBAR ── */}
+      {/* MOBILE TOPBAR */}
       <header style={{
         position: 'fixed', top: 0, left: 0, right: 0, zIndex: 30,
-        background: '#ffffff',
-        borderBottom: '1px solid #F0E0E0',
-        height: 52,
-        display: 'flex', alignItems: 'center',
-        padding: '0 16px',
-        justifyContent: 'space-between',
+        background: '#ffffff', borderBottom: '1px solid #F0E0E0',
+        height: 52, display: 'flex', alignItems: 'center',
+        padding: '0 16px', justifyContent: 'space-between',
       }} className="topbar-mobile">
+
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{
-            width: 26, height: 26, borderRadius: 7, background: '#D92B2B',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13,
-          }}>🍽️</div>
-          <span style={{ fontSize: 14, fontWeight: 700, color: '#1A0A0A' }}>
-            {currentStore?.name ?? 'FinTrack'}
-          </span>
+          <img
+            src="/assets/logo-full.png"
+            alt="Nong Ena"
+            style={{ height: 34, width: 'auto', objectFit: 'contain', display: 'block' }}
+          />
+          {currentStore?.name && (
+            <span style={{ fontSize: 13, fontWeight: 700, color: '#1A0A0A' }}>
+              {currentStore.name}
+            </span>
+          )}
         </div>
+
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <SyncIndicator />
-          <button style={btnStyleMobile} onClick={() => setActionSheetOpen(true)}>
-            + Catat
-          </button>
+          <button style={btnStyleMobile} onClick={() => setActionSheetOpen(true)}>+ Catat</button>
         </div>
       </header>
 
       <MoreDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
-
       <CatatActionSheet
         open={actionSheetOpen}
         onClose={() => setActionSheetOpen(false)}
         onOpenExpense={() => setExpenseOpen(true)}
       />
-
-      <ExpenseModal
-        open={expenseOpen}
-        onClose={() => setExpenseOpen(false)}
-      />
+      <ExpenseModal open={expenseOpen} onClose={() => setExpenseOpen(false)} />
 
       <style>{`
         .topbar-desktop { display: none !important; }

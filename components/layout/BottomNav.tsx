@@ -6,8 +6,10 @@ import { usePathname } from 'next/navigation'
 import { Home, UtensilsCrossed, Plus, Receipt, MoreHorizontal } from 'lucide-react'
 import { MoreDrawer } from './MoreDrawer'
 
+const DASHBOARD_HOME = '/dashboard'
+
 const NAV_ITEMS = [
-  { href: '/',            icon: Home,            label: 'Dashboard'   },
+  { href: '/dashboard',   icon: Home,            label: 'Dashboard'   },
   { href: '/catering',    icon: UtensilsCrossed, label: 'Catering'    },
   null,
   { href: '/pengeluaran', icon: Receipt,         label: 'Pengeluaran' },
@@ -52,7 +54,9 @@ export function BottomNav() {
             )
           }
           const Icon = item.icon
-          const isActive = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href)
+          const isActive = item.href === DASHBOARD_HOME
+            ? pathname === DASHBOARD_HOME
+            : pathname.startsWith(item.href)
           return (
             <Link key={item.href} href={item.href} style={{
               display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,

@@ -7,6 +7,14 @@ export const metadata: Metadata = {
   description: 'Catat, pantau, dan kembangkan bisnis kamu — semudah chat WhatsApp.',
   manifest: '/manifest.json',
   appleWebApp: { capable: true, statusBarStyle: 'default', title: 'FinTrack' },
+  icons: {
+    icon: [
+      { url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+    ],
+    apple: '/icons/apple-touch-icon.png',
+    shortcut: '/icons/icon-192.png',
+  },
 }
 
 export const viewport: Viewport = {

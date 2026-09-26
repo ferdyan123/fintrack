@@ -1,0 +1,45 @@
+import type { Metadata, Viewport } from "next";
+import "./globals.css";
+
+export const metadata: Metadata = {
+  title: "FinTrack",
+  description: "Catat, pantau, dan kembangkan bisnis kamu — semudah chat WhatsApp.",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "FinTrack",
+  },
+  icons: {
+    apple: "/icons/apple-touch-icon.png",
+    icon: [
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+  },
+  // OG & Twitter card (opsional, bagus untuk share link)
+  openGraph: {
+    title: "FinTrack",
+    description: "Catat, pantau, dan kembangkan bisnis kamu",
+    type: "website",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#3B1F0A",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html lang="id">
+      <body>{children}</body>
+    </html>
+  );
+}

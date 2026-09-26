@@ -174,7 +174,7 @@ export default function DashboardPage() {
 
   return (
     <div style={{ background:'var(--bg-base)', minHeight:'100vh' }}>
-    <div style={{ maxWidth:1100, margin:'0 auto', padding:'24px 24px 80px' }} className="dash-wrap">
+    <div style={{ maxWidth:1100, margin:'0 auto', padding:'24px 20px 80px' }} className="dash-wrap">
 
       {/* ══ HERO ══ */}
       <div style={{ background:'#D92B2B', borderRadius:16, color:'white', marginBottom:20, overflow:'hidden' }}>

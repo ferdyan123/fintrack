@@ -1,0 +1,29 @@
+{
+  "name": "FinTrack",
+  "short_name": "FinTrack",
+  "description": "Catat, pantau, dan kembangkan bisnis kamu — semudah chat WhatsApp.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FFC107",
+  "theme_color": "#3B1F0A",
+  "lang": "id",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

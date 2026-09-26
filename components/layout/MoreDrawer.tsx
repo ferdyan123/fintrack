@@ -43,7 +43,7 @@ export function MoreDrawer({ open, onClose }: MoreDrawerProps) {
     await supabase.auth.signOut()
     setCurrentStore(null)
     onClose()
-    router.push('/login')
+    router.push('/')
   }
 
   if (!open) return null

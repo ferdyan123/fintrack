@@ -1330,7 +1330,7 @@ export default function CateringPage() {
           DESKTOP / TABLET LAYOUT (≥ 768px)
       ════════════════════════════════════════════ */}
       <div className="desktop-only">
-        <div style={{ maxWidth: 1240, margin: '0 auto', padding: '28px 32px 40px' }}>
+        <div style={{ maxWidth: 1100, margin: '0 auto', padding: '28px 20px 40px' }}>
 
           <div style={{ background: 'var(--accent)', borderRadius: 18, padding: '22px 28px', marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 24 }}>
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -1504,9 +1504,7 @@ export default function CateringPage() {
           .desktop-only { display: block !important }
         }
 
-        @media (min-width: 1400px) {
-          .desktop-only > div { max-width: 1360px !important }
-        }
+        
       `}</style>
 
       {/* Modals */}

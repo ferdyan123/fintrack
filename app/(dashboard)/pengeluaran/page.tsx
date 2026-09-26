@@ -153,7 +153,11 @@ export default function PengeluaranPage() {
 
         {/* ════════════ DESKTOP ════════════ */}
         <div className="pengeluaran-desktop-layout">
-          <div style={{ maxWidth: 1100, margin: '0 auto', padding: '28px 32px 56px' }}>
+          {/*
+           * FIX PADDING: samain ke Journalyze — 20px kiri-kanan (dari 32px)
+           * max-width tetap 1100px konsisten dengan dashboard & riwayat
+           */}
+          <div style={{ maxWidth: 1100, margin: '0 auto', padding: '28px 20px 56px' }}>
 
             {/* ── PAGE HEADER ── */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
