@@ -64,25 +64,39 @@ export default function LoginPage() {
         setError('Akun dibuat, tapi gagal membuat toko: ' + storeErr.message)
         setLoading(false); return
       }
+      router.push('/dashboard')
     } else {
-      const { data: store, error: findErr } = await supabase
-        .from('stores').select('id').eq('store_code', storeCode.trim().toUpperCase()).single()
+      // ✅ BARU — cari toko lewat RPC (security definer), lalu ajukan join request
+      const { data: storeRaw, error: findErr } = await supabase
+        .rpc('find_store_by_code', { p_code: storeCode.trim() })
+        .maybeSingle()
+      const store = storeRaw as { id: string; name: string } | null
 
       if (findErr || !store) {
         setError('Kode toko tidak ditemukan. Periksa kembali kodenya.')
         setLoading(false); return
       }
 
-      const { error: joinErr } = await supabase.from('store_members').insert({
-        store_id: store.id, user_id: userId, role: 'staff',
+      const { error: reqErr } = await supabase.from('store_join_requests').insert({
+        store_id: store.id,
+        user_id: userId,
       })
-      if (joinErr) {
-        setError('Akun dibuat, tapi gagal gabung ke toko: ' + joinErr.message)
+
+      if (reqErr) {
+        // unique constraint → request sudah pernah diajukan
+        setError(
+          reqErr.code === '23505'
+            ? 'Kamu sudah pernah mengajukan permintaan gabung ke toko ini. Tunggu approval owner.'
+            : 'Akun dibuat, tapi gagal mengajukan gabung: ' + reqErr.message
+        )
         setLoading(false); return
       }
-    }
 
-    router.push('/dashboard')
+      // Jangan push ke /dashboard — user belum punya akses (belum ada row di store_members)
+      setInfo(`Permintaan gabung ke "${store.name}" terkirim. Tunggu owner toko menyetujui sebelum bisa login.`)
+      setEmail(''); setPassword(''); setStoreName(''); setStoreCode('')
+      setLoading(false)
+    }
   }
 
   const S = {
@@ -137,7 +151,7 @@ export default function LoginPage() {
         {/* Signup mode sub-toggle */}
         {tab === 'signup' && (
           <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-            <button onClick={() => setSignupMode('create')} style={{
+            <button onClick={() => { setSignupMode('create'); setError(''); setInfo('') }} style={{
               flex: 1, padding: '10px 8px', borderRadius: 10, cursor: 'pointer',
               border: `2px solid ${signupMode === 'create' ? '#D92B2B' : '#F0E0E0'}`,
               background: signupMode === 'create' ? '#FEF2F2' : 'white',
@@ -147,7 +161,7 @@ export default function LoginPage() {
             }}>
               <Store size={16} /> Toko Baru
             </button>
-            <button onClick={() => setSignupMode('join')} style={{
+            <button onClick={() => { setSignupMode('join'); setError(''); setInfo('') }} style={{
               flex: 1, padding: '10px 8px', borderRadius: 10, cursor: 'pointer',
               border: `2px solid ${signupMode === 'join' ? '#D92B2B' : '#F0E0E0'}`,
               background: signupMode === 'join' ? '#FEF2F2' : 'white',
@@ -157,6 +171,16 @@ export default function LoginPage() {
             }}>
               <Users size={16} /> Gabung Toko
             </button>
+          </div>
+        )}
+
+        {/* Info banner — mode join */}
+        {tab === 'signup' && signupMode === 'join' && !info && (
+          <div style={{
+            background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 10,
+            padding: '10px 12px', marginBottom: 14, fontSize: 12, color: '#1D4ED8', lineHeight: 1.5,
+          }}>
+            ℹ️ Gabung toko memerlukan persetujuan owner. Permintaanmu akan masuk ke antrian approval.
           </div>
         )}
 
@@ -181,8 +205,13 @@ export default function LoginPage() {
           {tab === 'signup' && signupMode === 'join' && (
             <>
               <label style={S.label}>Kode Toko</label>
-              <input style={{ ...S.input, textTransform: 'uppercase' }} value={storeCode}
-                onChange={(e) => setStoreCode(e.target.value)} placeholder="cth: A1B2C3" maxLength={6} />
+              <input
+                style={{ ...S.input, textTransform: 'uppercase' }}
+                value={storeCode}
+                onChange={(e) => setStoreCode(e.target.value.toUpperCase())}
+                placeholder="cth: A1B2C3"
+                maxLength={6}
+              />
             </>
           )}
         </div>
@@ -191,7 +220,10 @@ export default function LoginPage() {
           <p style={{ fontSize: 12, color: '#DC2626', margin: '0 0 12px', lineHeight: 1.5 }}>⚠️ {error}</p>
         )}
         {info && (
-          <p style={{ fontSize: 12, color: '#15803D', margin: '0 0 12px', lineHeight: 1.5 }}>✓ {info}</p>
+          <p style={{ fontSize: 12, color: '#15803D', margin: '0 0 12px', lineHeight: 1.5,
+            background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 8, padding: '10px 12px' }}>
+            ✓ {info}
+          </p>
         )}
 
         <button
@@ -206,7 +238,12 @@ export default function LoginPage() {
           }}
         >
           {loading ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : null}
-          {loading ? 'Memproses...' : tab === 'login' ? 'Masuk' : 'Daftar'}
+          {loading
+            ? 'Memproses...'
+            : tab === 'login'
+              ? 'Masuk'
+              : signupMode === 'create' ? 'Buat Toko' : 'Kirim Permintaan Gabung'
+          }
         </button>
       </div>
 

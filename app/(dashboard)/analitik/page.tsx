@@ -790,7 +790,7 @@ function CompareDailyTrendChart({ salesA, salesB, monthA, monthB, labelA, labelB
           <YAxis hide />
           <Tooltip
             contentStyle={{ fontSize: 11, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-surface)' }}
-            formatter={(v: unknown, key: string) => [formatRupiah(v as number), key === keyA ? labelA : labelB]}
+            formatter={(v: unknown, key: unknown) => [formatRupiah(v as number), key === keyA ? labelA : labelB]}
             labelFormatter={v => `Tanggal ${v}`}
           />
           <Legend
@@ -844,7 +844,7 @@ function CompareRadarChart({ statsA, statsB, labelA, labelB, keyA, keyB }: {
           <Radar name={labelB} dataKey={keyB} stroke="#F59E0B" fill="#F59E0B" fillOpacity={0.15} strokeWidth={2} strokeDasharray="4 2" />
           <Legend wrapperStyle={{ fontSize: 11 }} />
           <Tooltip contentStyle={{ fontSize: 11, borderRadius: 8, border: '1px solid var(--border)' }}
-            formatter={(v: unknown, key: string) => [`${v}/100`, key === keyA ? labelA : labelB]} />
+            formatter={(v: unknown, key: unknown) => [`${v}/100`, key === keyA ? labelA : labelB]} />
         </RadarChart>
       </ResponsiveContainer>
     </div>
@@ -886,7 +886,7 @@ function CompareQtyChart({ salesA, salesB, labelA, labelB, keyA, keyB }: {
           <YAxis hide />
           <Tooltip
             contentStyle={{ fontSize: 11, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-surface)' }}
-            formatter={(v: unknown, key: string) => [`${v} item`, key === keyA ? labelA : labelB]}
+            formatter={(v: unknown, key: unknown) => [`${v} item`, key === keyA ? labelA : labelB]}
           />
           <Legend
             wrapperStyle={{ fontSize: 11 }}
