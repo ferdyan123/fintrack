@@ -135,7 +135,7 @@ function CompareView() {
             />
             <Tooltip
               contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid var(--border)' }}
-              formatter={(v: unknown, name: string) => [
+              formatter={(v: unknown, name: unknown) => [
                 formatRupiah(v as number),
                 name === 'A' ? labelA : labelB,
               ]}
@@ -271,7 +271,7 @@ function TrendView() {
             <YAxis hide />
             <Tooltip
               contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid var(--border)' }}
-              formatter={(v: unknown, name: string) => [
+              formatter={(v: unknown, name: unknown) => [
                 formatRupiah(v as number),
                 name === 'omzet' ? 'Pemasukan' : name === 'keluar' ? 'Pengeluaran' : 'Laba Bersih',
               ]}
