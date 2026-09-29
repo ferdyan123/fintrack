@@ -50,6 +50,26 @@ export interface Transaction {
   source: 'kasir' | 'catering' | 'manual'
   payment_method?: PaymentMethodType
   created_at: string
+  transaction_group_id?: string   // ✅ BARU — id yang sama untuk item-item dalam 1x checkout kasir
+}
+
+// ─── Grouped Transaction — 1 baris tampilan di UI, bisa gabungan >1 Transaction ──
+// Dipakai di Dashboard & Riwayat untuk menampilkan 1x checkout kasir (multi-produk)
+// sebagai 1 baris, dengan rincian per-produk saat diklik.
+export interface GroupedTransaction {
+  id: string                  // transaction_group_id kalau ada, else fallback ke Transaction.id
+  type: TransactionType
+  category: string
+  customerName?: string
+  amount: number
+  profit?: number
+  qty?: number
+  payment_method?: PaymentMethodType
+  source: 'kasir' | 'catering' | 'manual'
+  date: string
+  created_at: string
+  note?: string
+  items: Transaction[]        // >1 item kalau hasil grouping checkout multi-produk
 }
 
 // ─── Sales (kasir) — tabel `sales` ─────────────────────────────────────────────
@@ -67,6 +87,7 @@ export interface Sale {
   date: string
   source: 'kasir' | 'catering'
   created_at: string
+  transaction_group_id?: string   // ✅ BARU
 }
 
 // ─── Expenses (pengeluaran manual) — tabel `expenses` ──────────────────────────

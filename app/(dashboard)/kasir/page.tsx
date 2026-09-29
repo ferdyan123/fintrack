@@ -71,19 +71,24 @@ export default function KasirPage() {
     const date = now.slice(0, 10)
     const note = [customerName.trim(), payMethod === 'cash' ? 'Tunai' : 'QRIS'].filter(Boolean).join(' · ')
 
+    // ✅ BARU — satu id yang sama untuk semua produk di checkout ini, dipakai
+    // buat mengelompokkan transaksi jadi 1 baris di Dashboard & Riwayat.
+    const groupId = crypto.randomUUID()
+
     const records = cart.map((item) => ({
-      store_id:       currentStore?.id ?? 'dummy-store-001',
-      product_id:     item.product.id,
-      product_name:   item.product.name,
-      category:       'Penjualan',
-      qty:            item.qty,
-      amount:         item.product.price * item.qty,
-      profit:         (item.product.price - item.product.hpp) * item.qty,
+      store_id:             currentStore?.id ?? 'dummy-store-001',
+      product_id:           item.product.id,
+      product_name:         item.product.name,
+      category:             'Penjualan',
+      qty:                  item.qty,
+      amount:                item.product.price * item.qty,
+      profit:                (item.product.price - item.product.hpp) * item.qty,
       note,
       date,
-      source:         'kasir' as const,
-      payment_method: payMethod,
-      created_at:     now,
+      source:                'kasir' as const,
+      payment_method:        payMethod,
+      created_at:            now,
+      transaction_group_id:  groupId, // ✅ BARU
     }))
 
     try {

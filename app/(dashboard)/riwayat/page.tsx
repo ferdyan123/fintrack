@@ -3,13 +3,13 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import {
   Search, X, ChevronDown, Trash2, RotateCcw,
-  TrendingUp, TrendingDown, Wallet, Hash,
-  Clock, Tag, FileText, CreditCard, ShoppingBag, Package, Calendar,
+  Wallet, Calendar,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useAppStore } from '@/lib/store/appStore'
-import { formatRupiah, formatDate, toISODate } from '@/lib/utils'
-import type { Transaction } from '@/types'
+import { formatRupiah, formatDate, toISODate, groupTransactions } from '@/lib/utils'
+import type { Transaction, GroupedTransaction } from '@/types'
+import TransactionDetailSheet from '@/components/shared/TransactionDetailSheet'
 
 // ─── FAKE DATA ────────────────────────────────────────────────────────────────
 function makeISO(daysAgo: number, h: number, m: number) {
@@ -289,13 +289,16 @@ function KpiCards({ income, expense, count, loading }: { income:number; expense:
   )
 }
 
-// ─── TRANSACTION ITEM ─────────────────────────────────────────────────────────
-function TransactionItem({ tx, onClick }: { tx:Transaction; onClick:(tx:Transaction)=>void }) {
-  const isIncome = tx.type==='income'
-  const label    = tx.product_name ?? tx.category
-  const src      = tx.source==='kasir' ? 'Kasir' : tx.source==='catering' ? '🍱 Catering' : '✏️ Manual'
+// ─── TRANSACTION ITEM — sekarang render 1 GroupedTransaction (bisa >1 item) ───
+function TransactionItem({ g, onClick }: { g:GroupedTransaction; onClick:(g:GroupedTransaction)=>void }) {
+  const isIncome = g.type==='income'
+  const isMulti  = g.items.length > 1
+  const label    = isMulti
+    ? (g.customerName ? `${g.customerName} · ${g.items.length} item` : `${g.items.length} item`)
+    : (g.items[0].product_name ?? g.category)
+  const src      = g.source==='kasir' ? 'Kasir' : g.source==='catering' ? '🍱 Catering' : '✏️ Manual'
   return (
-    <div onClick={()=>onClick(tx)} className="tx-item" style={{
+    <div onClick={()=>onClick(g)} className="tx-item" style={{
       display:'flex', alignItems:'center', gap:12, padding:'12px 20px',
       borderBottom:'1px solid var(--border)', cursor:'pointer', transition:'background .1s',
     }}>
@@ -307,25 +310,25 @@ function TransactionItem({ tx, onClick }: { tx:Transaction; onClick:(tx:Transact
           {label}
         </div>
         <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:1, display:'flex', alignItems:'center', gap:4, flexWrap:'wrap' }}>
-          {isIncome ? src : `💸 ${tx.category}`}
-          {' · '}{formatTime(tx.created_at)}
-          {tx.qty && tx.qty>1 ? ` · ×${tx.qty}` : ''}
-          {tx.payment_method && (
-            <span style={{ fontSize:10, fontWeight:600, padding:'1px 6px', borderRadius:4, background:tx.payment_method==='cash'?'#DCFCE7':'#DBEAFE', color:tx.payment_method==='cash'?'#16A34A':'#2563EB' }}>
-              {tx.payment_method==='cash' ? '💵 Cash' : '📱 QRIS'}
+          {isIncome ? src : `💸 ${g.category}`}
+          {' · '}{formatTime(g.created_at)}
+          {!isMulti && g.qty && g.qty>1 ? ` · ×${g.qty}` : ''}
+          {g.payment_method && (
+            <span style={{ fontSize:10, fontWeight:600, padding:'1px 6px', borderRadius:4, background:g.payment_method==='cash'?'#DCFCE7':'#DBEAFE', color:g.payment_method==='cash'?'#16A34A':'#2563EB' }}>
+              {g.payment_method==='cash' ? '💵 Cash' : '📱 QRIS'}
             </span>
           )}
         </div>
       </div>
       <div style={{ fontSize:14, fontWeight:600, fontFamily:'Nunito,sans-serif', flexShrink:0, color:isIncome?'var(--success)':'var(--danger)' }}>
-        {isIncome?'+':'−'}{formatRupiah(tx.amount)}
+        {isIncome?'+':'−'}{formatRupiah(g.amount)}
       </div>
     </div>
   )
 }
 
-// ─── TRANSACTION GROUP ────────────────────────────────────────────────────────
-function TransactionGroup({ date, transactions, onSelect }: { date:string; transactions:Transaction[]; onSelect:(tx:Transaction)=>void }) {
+// ─── TRANSACTION GROUP (per tanggal) — sekarang terima GroupedTransaction[] ───
+function TransactionGroup({ date, transactions, onSelect }: { date:string; transactions:GroupedTransaction[]; onSelect:(g:GroupedTransaction)=>void }) {
   const dayIn  = transactions.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0)
   const dayOut = transactions.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0)
   return (
@@ -337,69 +340,8 @@ function TransactionGroup({ date, transactions, onSelect }: { date:string; trans
           {dayOut > 0 && <span style={{ color:'var(--danger)',  fontWeight:700 }}>−{formatRupiah(dayOut)}</span>}
         </div>
       </div>
-      {transactions.map(tx=><TransactionItem key={tx.id} tx={tx} onClick={onSelect}/>)}
+      {transactions.map(g=><TransactionItem key={g.id} g={g} onClick={onSelect}/>)}
     </div>
-  )
-}
-
-// ─── DETAIL SHEET ─────────────────────────────────────────────────────────────
-function DetailSheet({ tx, onClose, onDelete }: { tx:Transaction|null; onClose:()=>void; onDelete:(id:string)=>Promise<void> }) {
-  const [confirming, setConfirming] = useState(false)
-  const [deleting,   setDeleting]   = useState(false)
-  useEffect(()=>{ if(!tx){ setConfirming(false); setDeleting(false) } },[tx])
-  if (!tx) return null
-  const isIncome = tx.type==='income'
-  const rows: { icon:React.ReactNode; label:string; value:string|undefined }[] = [
-    { icon:<Tag size={13}/>,         label:'Kategori', value:tx.category },
-    { icon:<Package size={13}/>,     label:'Produk',   value:tx.product_name },
-    { icon:<Hash size={13}/>,        label:'Qty',      value:tx.qty?`${tx.qty}`:undefined },
-    { icon:<Wallet size={13}/>,      label:'Amount',   value:formatRupiah(tx.amount) },
-    { icon:<TrendingUp size={13}/>,  label:'Laba',     value:tx.profit!==undefined?formatRupiah(tx.profit):undefined },
-    { icon:<CreditCard size={13}/>,  label:'Bayar',    value:isIncome&&tx.payment_method?(tx.payment_method==='cash'?'💵 Cash':'📱 QRIS'):undefined },
-    { icon:<ShoppingBag size={13}/>, label:'Sumber',   value:tx.source==='kasir'?'Kasir':tx.source==='catering'?'🍱 Catering':'Manual' },
-    { icon:<Calendar size={13}/>,    label:'Tanggal',  value:formatDate(tx.date+' 00:00:00','long') },
-    { icon:<Clock size={13}/>,       label:'Jam',      value:formatTime(tx.created_at) },
-    { icon:<FileText size={13}/>,    label:'Catatan',  value:tx.note||undefined },
-  ]
-  async function handleDelete() {
-    if (!confirming) { setConfirming(true); return }
-    setDeleting(true); await onDelete(tx!.id); setDeleting(false); onClose()
-  }
-  return (
-    <>
-      <div onClick={onClose} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.45)', zIndex:40, backdropFilter:'blur(2px)', animation:'fadeIn .2s ease' }}/>
-      <div style={{ position:'fixed', bottom:0, left:0, right:0, zIndex:50, background:'var(--bg-surface)', borderRadius:'16px 16px 0 0', maxHeight:'82vh', overflowY:'auto', animation:'slideUp .3s cubic-bezier(0.34,1.56,0.64,1)' }}>
-        <div style={{ display:'flex', justifyContent:'center', padding:'12px 0 4px' }}>
-          <div style={{ width:36, height:4, borderRadius:2, background:'var(--border)' }}/>
-        </div>
-        <div style={{ padding:'4px 20px 14px', display:'flex', justifyContent:'space-between', alignItems:'center', borderBottom:'1px solid var(--border)' }}>
-          <div>
-            <div style={{ fontSize:11, color:'var(--text-muted)', marginBottom:2 }}>Detail Transaksi</div>
-            <div style={{ fontSize:20, fontWeight:700, color:isIncome?'var(--success)':'var(--danger)', fontFamily:'Nunito, sans-serif' }}>
-              {isIncome?'+':'−'}{formatRupiah(tx.amount)}
-            </div>
-          </div>
-          <button onClick={onClose} style={{ background:'var(--bg-elevated)', border:'none', borderRadius:20, padding:'6px 14px', cursor:'pointer', color:'var(--text-secondary)', fontSize:12, fontWeight:600 }}>Tutup</button>
-        </div>
-        <div style={{ padding:'6px 0' }}>
-          {rows.filter(r=>r.value!==undefined).map((r,i,arr)=>(
-            <div key={i} style={{ padding:'9px 20px', display:'flex', alignItems:'flex-start', gap:12, borderBottom:i<arr.length-1?'1px solid var(--border)':'none' }}>
-              <span style={{ color:'var(--text-muted)', marginTop:1, flexShrink:0 }}>{r.icon}</span>
-              <span style={{ fontSize:12, color:'var(--text-muted)', minWidth:72, flexShrink:0 }}>{r.label}</span>
-              <span style={{ fontSize:13, color:'var(--text-primary)', fontWeight:500 }}>{r.value}</span>
-            </div>
-          ))}
-        </div>
-        <div style={{ padding:'12px 20px 32px' }}>
-          <button onClick={handleDelete} disabled={deleting} style={{ width:'100%', padding:'11px', borderRadius:10, border:'none', cursor:'pointer', background:confirming?'var(--danger)':'var(--danger-bg)', color:confirming?'#fff':'var(--danger)', fontSize:13, fontWeight:600, display:'flex', alignItems:'center', justifyContent:'center', gap:6, opacity:deleting?.6:1, transition:'background .15s' }}>
-            <Trash2 size={14}/>{deleting?'Menghapus...':confirming?'Konfirmasi Hapus?':'Hapus Transaksi'}
-          </button>
-          {confirming&&!deleting&&(
-            <button onClick={()=>setConfirming(false)} style={{ width:'100%', marginTop:6, padding:'9px', borderRadius:10, border:'1px solid var(--border)', background:'none', color:'var(--text-muted)', fontSize:13, cursor:'pointer' }}>Batal</button>
-          )}
-        </div>
-      </div>
-    </>
   )
 }
 
@@ -410,10 +352,10 @@ export default function RiwayatPage() {
   const isOffline    = typeof navigator!=='undefined' && !navigator.onLine
   const skipSupabase = isDummy || isOffline
 
-  const [allTx,      setAllTx]      = useState<Transaction[]>([])
-  const [loading,    setLoading]    = useState(true)
-  const [filters,    setFilters]    = useState<Filters>(DEFAULT_FILTERS)
-  const [selectedTx, setSelectedTx] = useState<Transaction|null>(null)
+  const [allTx,        setAllTx]        = useState<Transaction[]>([])
+  const [loading,      setLoading]      = useState(true)
+  const [filters,      setFilters]      = useState<Filters>(DEFAULT_FILTERS)
+  const [selectedGroup, setSelectedGroup] = useState<GroupedTransaction|null>(null)
 
   useEffect(()=>{
     async function load() {
@@ -449,34 +391,42 @@ export default function RiwayatPage() {
 
   const categories = useMemo(()=>Array.from(new Set(allTx.map(t=>t.category))).sort(),[allTx])
 
-  const filtered = useMemo(()=>{
+  // ✅ BARU — grup dulu (per checkout), baru filter di level grup, supaya 1 transaksi
+  // multi-produk nggak "kepotong" grupnya kalau cuma sebagian item cocok filter.
+  const groupedTx = useMemo(() => groupTransactions(allTx), [allTx])
+
+  const filtered = useMemo((): GroupedTransaction[] => {
     const {start,end} = getDateBounds(filters.dateRange, filters.dateFrom, filters.dateTo)
     const q = filters.search.toLowerCase()
-    return allTx.filter(tx=>{
-      const txDate = new Date(tx.created_at)
-      if (txDate<start||txDate>end)                                                return false
-      if (filters.tipe!=='all'     && tx.type!==filters.tipe)                     return false
-      if (filters.category!=='all' && tx.category!==filters.category)             return false
+    return groupedTx.filter(g=>{
+      const txDate = new Date(g.created_at)
+      if (txDate<start||txDate>end)                                                  return false
+      if (filters.tipe!=='all'     && g.type!==filters.tipe)                         return false
+      if (filters.category!=='all' && !g.items.some(t=>t.category===filters.category)) return false
       if (filters.payMethod!=='all') {
-        if (tx.type==='expense')                                                   return false
-        if (tx.payment_method!==filters.payMethod)                                return false
+        if (g.type==='expense')                                                       return false
+        if (g.payment_method!==filters.payMethod)                                    return false
       }
-      if (q && ![tx.product_name,tx.category,tx.note].join(' ').toLowerCase().includes(q)) return false
+      if (q) {
+        const haystack = [g.customerName, g.category, g.note, ...g.items.map(t=>t.product_name)]
+          .filter(Boolean).join(' ').toLowerCase()
+        if (!haystack.includes(q)) return false
+      }
       return true
     })
-  },[allTx,filters])
+  },[groupedTx,filters])
 
   const { income, expense, count } = useMemo(()=>({
-    income:  filtered.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0),
-    expense: filtered.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0),
+    income:  filtered.filter(g=>g.type==='income').reduce((s,g)=>s+g.amount,0),
+    expense: filtered.filter(g=>g.type==='expense').reduce((s,g)=>s+g.amount,0),
     count:   filtered.length,
   }),[filtered])
 
   const grouped = useMemo(()=>{
-    const map = new Map<string,Transaction[]>()
-    for (const tx of filtered) {
-      if (!map.has(tx.date)) map.set(tx.date,[])
-      map.get(tx.date)!.push(tx)
+    const map = new Map<string,GroupedTransaction[]>()
+    for (const g of filtered) {
+      if (!map.has(g.date)) map.set(g.date,[])
+      map.get(g.date)!.push(g)
     }
     return Array.from(map.entries()).sort((a,b)=>b[0].localeCompare(a[0]))
   },[filtered])
@@ -488,13 +438,15 @@ export default function RiwayatPage() {
   const handleChange = useCallback((f:Partial<Filters>)=>setFilters(p=>({...p,...f})),[])
   const handleReset  = useCallback(()=>setFilters(DEFAULT_FILTERS),[])
 
-  const handleDelete = useCallback(async (id:string)=>{
-    setAllTx(prev=>prev.filter(t=>t.id!==id))
+  // ✅ BARU — hapus semua item dalam 1 grup sekaligus (bukan cuma 1 baris)
+  const handleDeleteGroup = useCallback(async (group: GroupedTransaction)=>{
+    const ids = group.items.map(i => i.id)
+    setAllTx(prev=>prev.filter(t=>!ids.includes(t.id)))
     if (skipSupabase) return
     try {
       const supabase = createClient()
-      await supabase.from('sales').delete().eq('id',id)
-      await supabase.from('expenses').delete().eq('id',id)
+      await supabase.from('sales').delete().in('id', ids)
+      await supabase.from('expenses').delete().in('id', ids)
     } catch { /* graceful */ }
   },[skipSupabase])
 
@@ -567,7 +519,7 @@ export default function RiwayatPage() {
               <div style={{ background:'var(--bg-surface)', border:'1px solid var(--border)', borderRadius:14, overflow:'hidden' }}>
                 {grouped.map(([date,txs],gi)=>(
                   <div key={date} style={{ borderTop: gi>0 ? '2px solid var(--bg-elevated)' : 'none' }}>
-                    <TransactionGroup date={date} transactions={txs} onSelect={setSelectedTx}/>
+                    <TransactionGroup date={date} transactions={txs} onSelect={setSelectedGroup}/>
                   </div>
                 ))}
               </div>
@@ -576,7 +528,7 @@ export default function RiwayatPage() {
         </div>
       </div>
 
-      <DetailSheet tx={selectedTx} onClose={()=>setSelectedTx(null)} onDelete={handleDelete}/>
+      <TransactionDetailSheet group={selectedGroup} onClose={()=>setSelectedGroup(null)} onDelete={handleDeleteGroup}/>
     </>
   )
 }

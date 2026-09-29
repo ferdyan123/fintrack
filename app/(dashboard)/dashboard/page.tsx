@@ -1,11 +1,12 @@
 'use client'
 
 import { useMemo, useState, useEffect } from 'react'
-import { formatRupiah, formatDate, toISODate } from '@/lib/utils'
+import { formatRupiah, formatDate, toISODate, groupTransactions } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { useAppStore } from '@/lib/store/appStore'
 import { useRouter } from 'next/navigation'
-import type { Transaction } from '@/types'
+import type { Transaction, GroupedTransaction } from '@/types'
+import TransactionDetailSheet from '@/components/shared/TransactionDetailSheet'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell,
@@ -46,6 +47,9 @@ export default function DashboardPage() {
 
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading,      setLoading]      = useState(!skipSupabase)
+
+  // ✅ BARU — grup transaksi yang lagi dibuka detailnya (klik di list "Transaksi Hari Ini")
+  const [selectedGroup, setSelectedGroup] = useState<GroupedTransaction | null>(null)
 
   useEffect(() => {
     if (!currentStore) {
@@ -149,7 +153,9 @@ export default function DashboardPage() {
     ]
   }, [transactions])
 
-  const recent = useMemo(() => [...transactions].slice(0, 5), [transactions])
+  // ✅ BARU — pengganti `recent`, sekarang mengelompokkan item-item dari 1x checkout kasir
+  // (transaction_group_id sama) jadi 1 baris.
+  const recentGrouped = useMemo(() => groupTransactions(transactions).slice(0, 5), [transactions])
 
   const heroNarasi = useMemo(() => {
     if (income === 0) {
@@ -173,6 +179,7 @@ export default function DashboardPage() {
   }
 
   return (
+    <>
     <div style={{ background:'var(--bg-base)', minHeight:'100vh' }}>
     <div style={{ maxWidth:1100, margin:'0 auto', padding:'24px 20px 80px' }} className="dash-wrap">
 
@@ -420,45 +427,55 @@ export default function DashboardPage() {
           <span style={{ fontSize:12, color:'var(--accent)', fontWeight:600, cursor:'pointer' }} onClick={() => router.push('/riwayat')}>
             Lihat semua</span>
         </div>
-        {recent.length === 0 ? (
+        {recentGrouped.length === 0 ? (
           <div style={{ padding:'32px 20px', textAlign:'center', color:'var(--text-muted)', fontSize:13 }}>
             Belum ada transaksi hari ini
           </div>
-        ) : recent.map((t,i)=>(
-          <div key={t.id} style={{
-            display:'flex', alignItems:'center', gap:12, padding:'12px 20px',
-            borderBottom: i < recent.length-1 ? '1px solid var(--border)' : 'none',
-          }}>
-            <div style={{ width:36, height:36, borderRadius:10, flexShrink:0, fontSize:16,
-              background: t.type==='income' ? 'var(--success-bg)' : 'var(--danger-bg)',
-              display:'flex', alignItems:'center', justifyContent:'center' }}>
-              {t.type==='income' ? '🧾' : '💸'}
-            </div>
-            <div style={{ flex:1, minWidth:0 }}>
-              <div style={{ fontSize:13, fontWeight:600, color:'var(--text-primary)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                {t.product_name ?? t.category}
+        ) : recentGrouped.map((g,i)=>{
+          const isMulti = g.items.length > 1
+          const label = isMulti
+            ? (g.customerName ? `${g.customerName} · ${g.items.length} item` : `${g.items.length} item`)
+            : (g.items[0].product_name ?? g.category)
+          return (
+            <div
+              key={g.id}
+              onClick={() => setSelectedGroup(g)}
+              style={{
+                display:'flex', alignItems:'center', gap:12, padding:'12px 20px', cursor:'pointer',
+                borderBottom: i < recentGrouped.length-1 ? '1px solid var(--border)' : 'none',
+              }}
+            >
+              <div style={{ width:36, height:36, borderRadius:10, flexShrink:0, fontSize:16,
+                background: g.type==='income' ? 'var(--success-bg)' : 'var(--danger-bg)',
+                display:'flex', alignItems:'center', justifyContent:'center' }}>
+                {g.type==='income' ? '🧾' : '💸'}
               </div>
-              <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:1, display:'flex', alignItems:'center', gap:4 }}>
-                {t.type==='expense' ? `💸 ${t.category}` : t.source==='kasir' ? 'Kasir' : t.source==='catering' ? '🍱 Catering' : 'Manual'}
-                {' · '}{new Date(t.created_at).toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'})}
-                {t.qty && t.qty > 1 ? ` · ×${t.qty}` : ''}
-                {t.payment_method && (
-                  <span style={{
-                    marginLeft:4, fontSize:10, fontWeight:600, padding:'1px 6px', borderRadius:4,
-                    background: t.payment_method === 'cash' ? '#DCFCE7' : '#DBEAFE',
-                    color:      t.payment_method === 'cash' ? '#16A34A'  : '#2563EB',
-                  }}>
-                    {t.payment_method === 'cash' ? '💵 Cash' : '📱 QRIS'}
-                  </span>
-                )}
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontSize:13, fontWeight:600, color:'var(--text-primary)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                  {label}
+                </div>
+                <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:1, display:'flex', alignItems:'center', gap:4 }}>
+                  {g.type==='expense' ? `💸 ${g.category}` : g.source==='kasir' ? 'Kasir' : g.source==='catering' ? '🍱 Catering' : 'Manual'}
+                  {' · '}{new Date(g.created_at).toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'})}
+                  {!isMulti && g.qty && g.qty > 1 ? ` · ×${g.qty}` : ''}
+                  {g.payment_method && (
+                    <span style={{
+                      marginLeft:4, fontSize:10, fontWeight:600, padding:'1px 6px', borderRadius:4,
+                      background: g.payment_method === 'cash' ? '#DCFCE7' : '#DBEAFE',
+                      color:      g.payment_method === 'cash' ? '#16A34A'  : '#2563EB',
+                    }}>
+                      {g.payment_method === 'cash' ? '💵 Cash' : '📱 QRIS'}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div style={{ fontSize:14, fontWeight:600, fontFamily:'Nunito,sans-serif', flexShrink:0,
+                color: g.type==='income' ? 'var(--success)' : 'var(--danger)' }}>
+                {g.type==='income' ? '+' : '−'}{formatRupiah(g.amount,true)}
               </div>
             </div>
-            <div style={{ fontSize:14, fontWeight:600, fontFamily:'Nunito,sans-serif', flexShrink:0,
-              color: t.type==='income' ? 'var(--success)' : 'var(--danger)' }}>
-              {t.type==='income' ? '+' : '−'}{formatRupiah(t.amount,true)}
-            </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
 
     </div>
@@ -481,6 +498,11 @@ export default function DashboardPage() {
       }
     `}</style>
     </div>
+
+    {/* ✅ BARU — detail sheet, dibuka saat baris "Transaksi Hari Ini" diklik.
+        Tanpa prop onDelete → tombol hapus tidak ditampilkan di sini (hapus dilakukan di Riwayat). */}
+    <TransactionDetailSheet group={selectedGroup} onClose={() => setSelectedGroup(null)} />
+    </>
   )
 }
 
